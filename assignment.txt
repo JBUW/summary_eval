@@ -1,0 +1,87 @@
+Assignment: Evaluation program for LLM report generation from transcripts
+
+1. Rationale and ultimate goal
+
+This assignment combines three learning objectives: running and evaluating local AI on devices, integrating AI into applications, and understanding the limitations of language models through systematic measurement.
+
+Three lessons from a previous internal evaluation serve as mandatory requirements here:
+
+- The instruction prompt used to request the report is itself part of the evaluation: how well does the result answer the combination of the transcript and the specific instructions?
+- Evaluate at the claim level, rather than relying solely on a holistic score: every factual assertion must be traceable back to the transcript.
+- A single LLM judge is unreliable: repeat the evaluation or vary the judge, and report the variance.
+
+Ultimate goal: a reproducible evaluation program that assesses the quality of an LLM-generated report based on (a) a conversation transcript and (b) an instruction prompt specifying the report type (format, length, sections, target audience), and that compares multiple models—at least one of which is local—against each other and against reference reports.
+
+The program must be capable of: loading a corpus (transcript, instruction prompt, and any reference material; including an adapter for future custom data), generation (using at least two models, with run metadata recorded), automated measurement, evaluation via an LLM judge, validation against human judgment, and reporting (JSON/CSV output plus a readable report containing a comparison table and error analysis). 2. Preparation (optional)
+
+- Evaluating and Debugging Generative AI (https://www.deeplearning.ai/courses/evaluating-debugging-generative-ai)
+- Evaluating AI Agents (https://www.deeplearning.ai/courses/evaluating-ai-agents)
+- Improving Accuracy of LLM Applications (https://www.deeplearning.ai/courses/improving-accuracy-of-llm-applications)
+- Using LLM-as-a-judge for automated evaluation (https://huggingface.co/learn/cookbook/en/llm_judge)
+- Hamel Husain, Your AI Product Needs Evals (https://hamel.dev/blog/posts/evals/) and AI Evals FAQ (https://hamel.dev/blog/posts/evals-faq/) — the key practical resource on evals.
+
+Self-check terminology: metric, benchmark, ground truth, ROUGE/BLEU/BERTScore, precision/recall/F1, LLM-as-judge, pointwise vs. pairwise, rubric, faithfulness/hallucination, instruction adherence, inter-annotator agreement, judge bias, sample significance, reproducibility.
+
+3. Dataset
+
+Select one public dataset to serve as your main corpus:
+
+- MeetingBank (https://huggingface.co/datasets/lytang/MeetingBank-transcript) — municipal council meetings with professional minutes; closest to an "official record."
+- QMSum (https://github.com/Yale-LILY/QMSum) — instruction + meeting transcript → summary; conceptually closest to this assignment.
+- TweetSumm (https://github.com/guyfe/Tweetsumm) — customer service dialogue with summaries; closest to the UWV context. - SAMSum (https://huggingface.co/datasets/knkarthick/samsum) — short conversations; easy starting point.
+- MediaSum (https://huggingface.co/datasets/nbroad/mediasum) — very large, interviews.
+
+The dataset provides the transcript (and sometimes a reference), but never your instruction prompt; write two or three instruction prompts yourself for different types of reports (e.g., decision minutes, detailed report with action items, brief customer interaction summary).
+
+4. Phased approach
+
+Phase 0 — Exploration and design decisions
+
+Complete the terminology self-assessment; take the courses if desired. Get at least one local model running via an OpenAI-compatible endpoint (llama.cpp, Ollama, or LM Studio). Write a brief design document (language, libraries, dataset, models, judge setup, rationale) and submit it for approval before building.
+
+Phase 1 — Corpus and golden set
+
+Build the dataset adapter; select a golden set of 20–50 items and justify the selection. Store the instruction prompts in separate files.
+
+Phase 2 — Generation pipeline
+
+Transcript + instruction prompt → report, for at least two models (one local; the other may be an API model). Use fixed parameters, full run metadata, and cache responses so that metrics can be recalculated without regenerating.
+
+Phase 3 — Automated metrics
+
+Using unit tests on small, manually calculated examples:
+
+1. Overlap with the reference: at least ROUGE-1/2/L. 2. Reference-free checks: structural adherence (sections, order, language, length) and claim-level faithfulness—break the report down into assertions and verify each assertion against the transcript (supported / unsupported / contradicted). The proportion of unsupported assertions is the primary metric for hallucinations.
+
+Phase 4 — LLM-judge
+
+Evaluation framework featuring a scale with anchored levels for each criterion (faithfulness, completeness, instruction adherence, readability). The judge evaluates the report against the prompt, provides structured output (score, justification, quotes), runs multiple times or uses two judge models (reporting the variance), and undergoes at least one bias check (e.g., swapping order in pairwise comparisons or checking the correlation between score and length).
+
+Phase 5 — Validation
+
+Blindly evaluate a sample of 10–20 reports yourself using the same rubric; calculate the agreement with the judge scores and analyze discrepancies. Document at least five failure cases.
+
+Phase 6 — Reporting
+
+Comparison table per model (metrics, evaluation scores with variance, faithfulness ratio, structural adherence), error analysis of the worst cases, and conclusions: which models are suitable for on-device report generation?
+
+Possible extensions: logging results to an experiment tracking platform like Weights & Biases; performing a sweep over prompt variants instead of models.
+
+5. Hard requirements
+
+1. Reproducible: prompt files, model names and versions, parameters, and dataset selection recorded for each run.
+2. Fail fast: errors are raised with file and line context; no silent fallbacks.
+3. Results must be both machine-readable (JSON/CSV) and human-readable (report).
+4. Every custom metric includes unit tests, covering edge cases.
+5. Standalone program; the dataset adapter is the only extension point.
+6. Every figure in the report indicates its source (n items, run, judge). 6. Areas of discretion
+
+Programming language and libraries, CLI or UI, choice of dataset from the candidates (or a motivated alternative), which and how many models (at least two, one local), judge setup and rubric design, size of the golden set and sample, storage formats, and project structure. Fixed elements: the ultimate goal, the phases with deliverables, and the mandatory requirements. Any potential conflicts? Discuss them before you start building.
+
+7. Milestones
+
+- Milestone 1 — Design document approved; self-assessment completed; local model running.
+- Milestone 2 — Golden set and instruction prompts finalized; initial reports generated.
+- Milestone 3 — Metrics and judge operational; interim progress demonstrated.
+- Milestone 4 — Validation completed; draft report discussed.
+- Milestone 5 — Final report and presentation.
