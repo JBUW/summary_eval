@@ -6,15 +6,16 @@
 
 **Status:** ready-for-agent
 
-- [ ] One executable exposes all six subcommands; unknown subcommand or flag ⇒ exit 2 with an `error:` line.
-- [ ] `--config` defaults to `config.json`; `--store` overrides the configuration's store value; overrides are never written back to the configuration file.
-- [ ] Exit classes are stable and classified correctly: 0 = success including no-ops and dry runs; 1 = runtime failure, fail-fast; 2 = pre-effect specification error with nothing executed (no model or judge calls, no store writes).
-- [ ] No-ops are printed with `note:` and exit 0; `error:` is never used for "nothing to do".
-- [ ] Message order within a run: `warn:` lines first, then `plan:` lines, then `note:` lines.
-- [ ] `#` specs: single 0-based positions and inclusive ranges, comma-separated in any order (a range may lead); strict digits only; out-of-range, inverted, or malformed ⇒ exit 2; valid in named AND unnamed datasets.
-- [ ] `@` specs: literal entry ids; `@@x` names an entry literally called `@x`; resolves only in named datasets ⇒ unnamed is exit 2.
-- [ ] `*`: all entries of the dataset; as the entire `--select` argument it means all datasets × all entries.
-- [ ] Occurrences are unioned, duplicates dropped; a `--select` occurrence with zero specs ⇒ exit 2; no `--select` ⇒ full scope.
-- [ ] Tests assert only external behavior (stdout lines, exit codes) and survive behavior-preserving refactors; the test harness is reusable by later tickets.
+- [x] One executable exposes all six subcommands; unknown subcommand or flag ⇒ exit 2 with an `error:` line.
+- [x] `--config` defaults to `config.json`; `--store` overrides the configuration's store value; overrides are never written back to the configuration file.
+- [x] Exit classes are stable and classified correctly: 0 = success including no-ops and dry runs; 1 = runtime failure, fail-fast; 2 = pre-effect specification error with nothing executed (no model or judge calls, no store writes).
+- [x] No-ops are printed with `note:` and exit 0; `error:` is never used for "nothing to do".
+- [x] Message order within a run: `warn:` lines first, then `plan:` lines, then `note:` lines.
+- [x] `#` specs: single 0-based positions and inclusive ranges, comma-separated in any order (a range may lead); strict digits only; out-of-range, inverted, or malformed ⇒ exit 2; valid in named AND unnamed datasets.
+- [x] `@` specs: literal entry ids; `@@x` names an entry literally called `@x`; resolves only in named datasets ⇒ unnamed is exit 2.
+- [x] `*`: all entries of the dataset; as the entire `--select` argument it means all datasets × all entries.
+- [x] Occurrences are unioned, duplicates dropped; a `--select` occurrence with zero specs ⇒ exit 2; no `--select` ⇒ full scope.
+- [x] Tests assert only external behavior (stdout lines, exit codes) and survive behavior-preserving refactors; the test harness is reusable by later tickets.
 
 ## Comments
+- 2026-10-24 — implemented: bin/evalapp scaffold (six subcommands, --config/--store), console contract (exit classes 0/1/2, stdout prefixes error:/warn:/plan:/note: in fixed order, no-ops as note: with exit 0), selection grammar (#/@/* with union and dedup), in-process test harness; 8 test files, 53 tests green via /usr/local/py-utils/bin/pytest.
