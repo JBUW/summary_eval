@@ -6,11 +6,12 @@
 
 **Status:** ready-for-agent
 
-- [ ] A pure function maps raw judge text to structured quality values: no I/O, no configuration, no store, no network.
-- [ ] Out-of-scale values are marked out-of-range and never clamped.
-- [ ] A misspelled quality label is treated as missing, not as a value.
-- [ ] Parse policy: warning + recorded exclusion, or partial acceptance governed by the code constant `ACCEPT_PARTIAL_RESULTS` (default off).
-- [ ] Golden fixtures (recorded raw response + expected outcome) cover at least: clean, directly parseable values; prose-wrapped and markdown-fenced values; duplicate quality values (identical duplicates accepted, conflicting duplicates excluded per the parse policy); integer versus decimal value forms; out-of-scale ⇒ out-of-range; misspelled label ⇒ missing; the partial-acceptance path per the constant (off ⇒ warning + exclusion).
-- [ ] Naming discipline: these are golden *fixtures* (input at a seam) and stay distinct from the glossary's *golden set* (the curated, documented subset of a dataset) in code, comments, and documentation.
+- [x] A pure function maps raw judge text to structured quality values: no I/O, no configuration, no store, no network.
+- [x] Out-of-scale values are marked out-of-range and never clamped.
+- [x] A misspelled quality label is treated as missing, not as a value.
+- [x] Parse policy: warning + recorded exclusion, or partial acceptance governed by the code constant `ACCEPT_PARTIAL_RESULTS` (default off).
+- [x] Golden fixtures (recorded raw response + expected outcome) cover at least: clean, directly parseable values; prose-wrapped and markdown-fenced values; duplicate quality values (identical duplicates accepted, conflicting duplicates excluded per the parse policy); integer versus decimal value forms; out-of-scale ⇒ out-of-range; misspelled label ⇒ missing; the partial-acceptance path per the constant (off ⇒ warning + exclusion).
+- [x] Naming discipline: these are golden *fixtures* (input at a seam) and stay distinct from the glossary's *golden set* (the curated, documented subset of a dataset) in code, comments, and documentation.
 
 ## Comments
+- 2026-10-25 — implemented: pure judge-response parser (forgiveness contract, warning + recorded exclusion, ACCEPT_PARTIAL_RESULTS policy default off, out-of-range never clamped) + golden fixtures (10 recorded raw responses) + parser constants/scale tests; 146 tests green via /usr/local/py-utils/bin/pytest

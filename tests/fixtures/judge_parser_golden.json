@@ -1,0 +1,104 @@
+[
+  {
+    "id": "clean",
+    "raw": "factual_correctness: 0.9\ncompleteness: 0.8\nconciseness: 0.75",
+    "expected": {
+      "rejected": false,
+      "values": { "factual_correctness": 0.9, "completeness": 0.8, "conciseness": 0.75 },
+      "warnings": []
+    }
+  },
+  {
+    "id": "prose_wrapped",
+    "raw": "Overall the summary is faithful and covers the key decisions.\nfactual_correctness: 0.85\ncompleteness: 0.7\nconciseness: 0.6\nIn summary: a solid, somewhat verbose summary.",
+    "expected": {
+      "rejected": false,
+      "values": { "factual_correctness": 0.85, "completeness": 0.7, "conciseness": 0.6 },
+      "warnings": []
+    }
+  },
+  {
+    "id": "markdown_fenced",
+    "raw": "Here is the evaluation you asked for:\n\n```json\n{\"factual_correctness\": 0.9, \"completeness\": 0.8, \"conciseness\": 0.7}\n```\n\nLet me know if you need anything else.",
+    "expected": {
+      "rejected": false,
+      "values": { "factual_correctness": 0.9, "completeness": 0.8, "conciseness": 0.7 },
+      "warnings": []
+    }
+  },
+  {
+    "id": "identical_duplicates",
+    "raw": "factual_correctness: 0.9\ncompleteness: 0.8\nconciseness: 0.7\nTo reiterate: factual correctness = 0.9 and conciseness = 0.7.",
+    "expected": {
+      "rejected": false,
+      "values": { "factual_correctness": 0.9, "completeness": 0.8, "conciseness": 0.7 },
+      "warnings": []
+    }
+  },
+  {
+    "id": "conflicting_duplicates",
+    "raw": "factual_correctness: 0.9\ncompleteness: 0.8\nconciseness: 0.7\nOn second thought: factual_correctness: 0.6",
+    "expected": {
+      "rejected": true,
+      "values": {},
+      "warnings": [
+        "quality 'factual_correctness' conflicting values in judge response: 0.9, 0.6"
+      ]
+    }
+  },
+  {
+    "id": "integer_vs_decimal",
+    "raw": "factual_correctness: 1\ncompleteness: 0.8\nconciseness: .5",
+    "expected": {
+      "rejected": false,
+      "values": { "factual_correctness": 1.0, "completeness": 0.8, "conciseness": 0.5 },
+      "warnings": []
+    }
+  },
+  {
+    "id": "out_of_scale",
+    "raw": "factual_correctness: 1.7\ncompleteness: 0.8\nconciseness: 0.7",
+    "expected": {
+      "rejected": true,
+      "values": {},
+      "warnings": [
+        "quality 'factual_correctness' out of range in judge response: 1.7 (scale 0.0-1.0)"
+      ]
+    }
+  },
+  {
+    "id": "misspelled_label",
+    "raw": "factual_correctnes: 0.9\ncompleteness: 0.8\nconciseness: 0.7",
+    "expected": {
+      "rejected": true,
+      "values": {},
+      "warnings": [
+        "quality 'factual_correctness' missing from judge response"
+      ]
+    }
+  },
+  {
+    "id": "partial_missing_quality",
+    "raw": "factual_correctness: 0.9\ncompleteness: 0.8",
+    "expected": {
+      "rejected": true,
+      "values": {},
+      "warnings": [
+        "quality 'conciseness' missing from judge response"
+      ]
+    }
+  },
+  {
+    "id": "empty_response",
+    "raw": "",
+    "expected": {
+      "rejected": true,
+      "values": {},
+      "warnings": [
+        "quality 'factual_correctness' missing from judge response",
+        "quality 'completeness' missing from judge response",
+        "quality 'conciseness' missing from judge response"
+      ]
+    }
+  }
+]
