@@ -22,3 +22,4 @@
 - [ ] Against the normative example configuration at the repo root (whose data, prompt, and model paths are illustrative and absent), `check` reports those missing-file contract failures and exits 2 — the expected first end-to-end demo until the files exist.
 
 ## Comments
+- 2026-10-25 — split into 02a (boxes 1–4), 02b (boxes 6–7; box 8/R2 out of scope per design decision 4), 02c (box 5 + Store.open_readonly/port pre-scan/--server-* flags + score gate), 02d (boxes 9, 10, 11, 14 + _check rewrite + existing-test and docs/commands.md updates). A/B/C independent; D after A+B+C. Close the parts, not this file.
