@@ -12,6 +12,7 @@ from .console import Console
 from .datasets import load_dataset
 from .errors import RuntimeFailure, SpecError
 from .selection import resolve_selection
+from .store import Store
 
 SUBCOMMANDS = ("check", "generate", "score", "sweep", "report", "clear")
 SELECT_COMMANDS = ("generate", "score", "report")
@@ -47,6 +48,8 @@ def build_parser():
                 default=None,
                 metavar="<dataset> <spec>...",
             )
+        if command == "clear":
+            sub.add_argument("--yes", action="store_true", default=False)
         sub.set_defaults(handler=_HANDLERS[command])
     return parser
 
@@ -90,7 +93,23 @@ def _clear(args, console):
     if not os.path.exists(store_path):
         console.note(f"no store at {store_path}; nothing to clear")
         return 0
-    console.plan("clear", f"store {store_path}")
+    store = Store(store_path)
+    try:
+        counts = store.table_counts()
+        if args.yes:
+            deleted = store.clear()
+            console.done("clear", f"{deleted} rows deleted across {len(counts)} tables")
+        else:
+            console.plan(
+                "clear",
+                f"store {store_path} | " + " | ".join(f"{t} {c}" for t, c in counts),
+            )
+    finally:
+        store.close()
+    if store.created:
+        console.note(f"created empty store at {store_path}")
+    if not args.yes:
+        console.note("re-run with --yes to delete all rows (this cannot be undone)")
     return 0
 
 

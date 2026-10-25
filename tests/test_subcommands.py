@@ -33,7 +33,6 @@ def test_no_subcommand(tmp_path):
         ["check", "--bogus"],
         ["generate", "--metrics", "x"],
         ["sweep", "--select", "named", "*"],
-        ["clear", "--yes"],
         ["report", "--json"],
     ],
 )
