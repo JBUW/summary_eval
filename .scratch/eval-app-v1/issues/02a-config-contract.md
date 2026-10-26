@@ -8,10 +8,10 @@
 
 **Series note (02a–02d):** implement the four parts sequentially in a single context — no subagent orchestration; each part is self-contained and commits on its own.
 
-- [ ] Strict JSON configuration: duplicate keys in a definition section ⇒ `error: duplicate name '<x>' in <section>`; `*` used as a name ⇒ error; unrecognized fields ⇒ `warn: unrecognized field '<name>' in <location>` only; the open maps (`server.args`, `model_args`, `gen_params`, `env`) are exempt from recognition.
-- [ ] Every summarizer resolves at load time to a full four-tuple (model + model_args + prompt template + gen_params); `base` copy-then-override names an earlier summarizer (later ⇒ static error); a stray `path` in a summarizer ⇒ error.
-- [ ] model_args resolution is a two-layer merge (model entry, then summarizer override per key); the model path is never overridable from a summarizer; `server.args` never layers into model_args.
-- [ ] Judge contract: `requires_reference` is a REQUIRED boolean (absent or non-boolean ⇒ exit 2); `{transcript}` and `{summary}` must appear in the system + user template combined (missing ⇒ error naming the placeholder); `{reference}` is required iff the flag is on; a superfluous `{reference}` with the flag off is legal; unknown `{...}` tokens are NOT errors (they pass through unsubstituted).
+- [x] Strict JSON configuration: duplicate keys in a definition section ⇒ `error: duplicate name '<x>' in <section>`; `*` used as a name ⇒ error; unrecognized fields ⇒ `warn: unrecognized field '<name>' in <location>` only; the open maps (`server.args`, `model_args`, `gen_params`, `env`) are exempt from recognition.
+- [x] Every summarizer resolves at load time to a full four-tuple (model + model_args + prompt template + gen_params); `base` copy-then-override names an earlier summarizer (later ⇒ static error); a stray `path` in a summarizer ⇒ error.
+- [x] model_args resolution is a two-layer merge (model entry, then summarizer override per key); the model path is never overridable from a summarizer; `server.args` never layers into model_args.
+- [x] Judge contract: `requires_reference` is a REQUIRED boolean (absent or non-boolean ⇒ exit 2); `{transcript}` and `{summary}` must appear in the system + user template combined (missing ⇒ error naming the placeholder); `{reference}` is required iff the flag is on; a superfluous `{reference}` with the flag off is legal; unknown `{...}` tokens are NOT errors (they pass through unsubstituted).
 
 ## Settled design (implement as written; do not re-derive from the docs)
 
@@ -56,3 +56,4 @@
 - One commit including this ticket file: `git -c user.name="Codex" -c user.email="codex@local" commit -m "feat: ticket 02a — config strict contract"`.
 
 ## Comments
+2026-10-26 — Implemented load_config collect mode (errors param) and validate_config strict contract (sections/names/fields, warns, summarizer base-chain resolution, judge placeholder contract, defaults); added tests/test_config_contract.py (85 tests).
