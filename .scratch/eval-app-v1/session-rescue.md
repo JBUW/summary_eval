@@ -28,8 +28,9 @@ stashes, `git fsck --unreachable` empty):
 - `839278c` = rescued settled design doc
 
 In-log only (not in the repo):
-- The 12 intermediate handoffs (extracted copies in `/tmp/handoffs/`; originals
-  inside the 4352-line log above).
+- The 12 intermediate handoffs (extracted copies were in `/tmp/handoffs/`,
+  removed 2026-10-26 during /tmp cleanup; originals remain inside the
+  4352-line log above).
 - Environment corrections (see below).
 - The resolved contradiction between stale handoffs 07/08 and the final design.
 - Shadow-worktree conclusions: `/tmp/eval-app-shadow` (real git repo, master
