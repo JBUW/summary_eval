@@ -4,7 +4,10 @@ Single shared open path: an absent file or a file with zero tables is
 bootstrapped (directory, file, all 8 tables); an existing file with at
 least one table must match the documented schema exactly, else opening is
 a pre-effect failure with a hint to move or delete the file. There is
-never migration. Every row is addressed by its identity sha256; inserting
+never migration. ``Store.open_readonly`` never bootstraps: an absent file
+yields ``None`` and a zero-table file is a valid empty store; one or more
+tables get the same exact schema check. Every row is addressed by its
+identity sha256; inserting
 an existing identity upserts under the stamp rule — updated_at moves only
 when a non-identity value differs from what is stored, and a pure
 re-insert leaves the row untouched.
@@ -240,38 +243,59 @@ def _now():
 
 
 class Store:
-    def __init__(self, path):
+    def __init__(self, path, readonly=False):
         self.path = path
         self.created = False
-        if not os.path.exists(path) and os.path.dirname(path):
+        self.readonly = readonly
+        if not readonly and not os.path.exists(path) and os.path.dirname(path):
             os.makedirs(os.path.dirname(path), exist_ok=True)
+        self._db = self._connect(readonly)
         try:
-            self._db = sqlite3.connect(path)
-        except sqlite3.Error as exc:
-            raise SpecError(f"cannot open store at {path}: {exc}") from exc
-        try:
-            try:
-                tables = {
-                    row[0]
-                    for row in self._db.execute(
-                        "SELECT name FROM sqlite_master"
-                        " WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
-                    )
-                }
-            except sqlite3.DatabaseError as exc:
-                self._db.close()
-                raise SpecError(_MISMATCH.format(path=path)) from exc
-            if not tables:
+            tables = self._table_names()
+            if not tables and not readonly:
                 with self._db:
                     for table in TABLES:
                         self._db.execute(_DDL[table])
                 self.created = True
-            else:
+            elif tables:
                 self._verify_schema(tables)
         except SpecError:
             self._db.close()
             raise
-        self._db.execute("PRAGMA foreign_keys = ON")
+        if not readonly:
+            self._db.execute("PRAGMA foreign_keys = ON")
+
+    @classmethod
+    def open_readonly(cls, path):
+        """Read-only open: None when the file is absent (never bootstraps);
+        a zero-table file is a valid empty store; one or more tables get
+        the same exact schema check."""
+        if not os.path.exists(path):
+            return None
+        return cls(path, readonly=True)
+
+    def _connect(self, readonly):
+        if readonly:
+            target, kwargs = f"file:{self.path}?mode=ro", {"uri": True}
+        else:
+            target, kwargs = self.path, {}
+        try:
+            return sqlite3.connect(target, **kwargs)
+        except sqlite3.Error as exc:
+            raise SpecError(f"cannot open store at {self.path}: {exc}") from exc
+
+    def _table_names(self):
+        try:
+            return {
+                row[0]
+                for row in self._db.execute(
+                    "SELECT name FROM sqlite_master"
+                    " WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+                )
+            }
+        except sqlite3.DatabaseError as exc:
+            self._db.close()
+            raise SpecError(_MISMATCH.format(path=self.path)) from exc
 
     def _verify_schema(self, tables):
         if tables != set(TABLES):

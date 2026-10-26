@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-- [ ] Wholesale CLI overrides apply for the store path and the five server launch values on every command that spawns or could spawn; overrides are never written back; `default_metrics` / `default_judges` are NOT wholesale-replaceable.
+- [x] Wholesale CLI overrides apply for the store path and the five server launch values on every command that spawns or could spawn; overrides are never written back; `default_metrics` / `default_judges` are NOT wholesale-replaceable.
 
 ## Settled design (implement as written; do not re-derive from the docs)
 
@@ -45,3 +45,4 @@
 - One commit including this ticket file: `git -c user.name="Codex" -c user.email="codex@local" commit -m "feat: ticket 02c — check plumbing"`.
 
 ## Comments
+2026-10-26 — Added Store.open_readonly (absent file yields None and never bootstraps; a zero-table file is a valid empty store; one or more tables get the same exact schema check); check store handling: default read-only open (absent => note, mismatch => exact _MISMATCH) and --create-store bootstrap note; --server-* flags accepted on generate/score/sweep/check plus --probe-judges/--create-store on check (never written back; default_metrics/default_judges untouched); score gate before JSON parse and config load (--server-* flags require --generate); check-only --server-args/--server-env JSON object validation; port_is_free pre-scan helper (socket-creation failure => free; bind failure => bound error); added tests/test_check_plumbing.py (23 tests) and extended tests/test_store.py (5 tests).

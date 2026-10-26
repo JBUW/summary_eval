@@ -1,5 +1,7 @@
 import argparse
+import json
 import os
+import socket
 import sys
 
 from .config import (
@@ -16,6 +18,14 @@ from .store import Store
 
 SUBCOMMANDS = ("check", "generate", "score", "sweep", "report", "clear")
 SELECT_COMMANDS = ("generate", "score", "report")
+SERVER_COMMANDS = ("generate", "score", "sweep", "check")
+_SERVER_FLAG_ATTRS = (
+    "server_command",
+    "server_args",
+    "server_env",
+    "server_port",
+    "server_startup_timeout",
+)
 
 
 class _CliExit(Exception):
@@ -48,8 +58,17 @@ def build_parser():
                 default=None,
                 metavar="<dataset> <spec>...",
             )
+        if command in SERVER_COMMANDS:
+            sub.add_argument("--server-command", default=None)
+            sub.add_argument("--server-args", default=None)
+            sub.add_argument("--server-env", default=None)
+            sub.add_argument("--server-port", type=int, default=None)
+            sub.add_argument("--server-startup-timeout", type=float, default=None)
         if command == "clear":
             sub.add_argument("--yes", action="store_true", default=False)
+        if command == "check":
+            sub.add_argument("--probe-judges", action="store_true", default=False)
+            sub.add_argument("--create-store", action="store_true", default=False)
         sub.set_defaults(handler=_HANDLERS[command])
     return parser
 
@@ -60,6 +79,35 @@ def _load(args, console):
         args.config is not None,
         console,
     )
+
+
+def port_is_free(port):
+    """Port pre-scan: socket-creation failure (e.g. sandboxed) counts as
+    free; a bind failure raises SpecError with the bound-port error."""
+    try:
+        probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    except OSError:
+        return True
+    try:
+        probe.bind(("127.0.0.1", port))
+    except OSError:
+        raise SpecError(
+            f"port {port} already bound "
+            "(a previous model server may still be running)"
+        ) from None
+    finally:
+        probe.close()
+    return True
+
+
+def _parse_json_object(value, flag):
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise SpecError(f"invalid JSON for {flag}: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise SpecError(f"{flag} must be a JSON object")
+    return parsed
 
 
 def _run_command(command, args, console):
@@ -78,13 +126,33 @@ def _run_command(command, args, console):
 
 
 def _check(args, console):
+    if args.server_args is not None:
+        _parse_json_object(args.server_args, "--server-args")
+    if args.server_env is not None:
+        _parse_json_object(args.server_env, "--server-env")
     config = _load(args, console)
     declared = validate_datasets(config)
     console.plan("check", f"{len(declared)} datasets")
     store_path = effective_store_path(config, args.store)
-    if not os.path.exists(store_path):
-        console.note(f"no store at {store_path}")
+    if args.create_store:
+        store = Store(store_path)
+        created = store.created
+        store.close()
+        if created:
+            console.note(f"created empty store at {store_path}")
+    else:
+        store = Store.open_readonly(store_path)
+        if store is None:
+            console.note(f"no store at {store_path}")
+        else:
+            store.close()
     return 0
+
+
+def _score(args, console):
+    if any(getattr(args, name) is not None for name in _SERVER_FLAG_ATTRS):
+        raise SpecError("--server-* flags require --generate")
+    return _run_command("score", args, console)
 
 
 def _clear(args, console):
@@ -123,7 +191,7 @@ def _sweep(args, console):
 _HANDLERS = {
     "check": _check,
     "generate": lambda args, console: _run_command("generate", args, console),
-    "score": lambda args, console: _run_command("score", args, console),
+    "score": _score,
     "sweep": _sweep,
     "report": lambda args, console: _run_command("report", args, console),
     "clear": _clear,

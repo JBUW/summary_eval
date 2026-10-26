@@ -304,3 +304,55 @@ def test_clear_deletes_all_eight_tables(tmp_path):
         assert [count for _, count in opened.table_counts()] == [0] * 8
     finally:
         opened.close()
+
+
+def test_open_readonly_absent_returns_none_and_never_bootstraps(tmp_path):
+    path = str(tmp_path / "nested" / "store.db")
+    assert store.Store.open_readonly(path) is None
+    assert not (tmp_path / "nested").exists()
+
+
+def test_open_readonly_zero_table_file_is_valid_empty(tmp_path):
+    path = str(tmp_path / "store.db")
+    with _raw(path):
+        pass  # empty sqlite file, zero tables
+    opened = store.Store.open_readonly(path)
+    try:
+        assert opened.readonly is True
+        assert opened.created is False
+        assert _table_names(path) == set()
+    finally:
+        opened.close()
+
+
+def test_open_readonly_reads_bootstrapped_store(tmp_path):
+    path = str(tmp_path / "store.db")
+    bootstrapped = store.Store(path)
+    bootstrapped.upsert_transcript("text", "d", None, 0)
+    bootstrapped.close()
+    opened = store.Store.open_readonly(path)
+    try:
+        assert opened.readonly is True
+        counts = dict(opened.table_counts())
+        assert list(counts) == list(store.TABLES)
+        assert counts["transcripts"] == 1
+    finally:
+        opened.close()
+
+
+def test_open_readonly_mismatch_raises_exact_error(tmp_path):
+    path = str(tmp_path / "store.db")
+    with _raw(path) as db:
+        db.execute("CREATE TABLE wrong_table (x TEXT)")
+    with pytest.raises(SpecError) as excinfo:
+        store.Store.open_readonly(path)
+    assert str(excinfo.value) == store._MISMATCH.format(path=path)
+
+
+def test_open_readonly_unopenable_raises_cannot_open(tmp_path):
+    path = str(tmp_path / "store.db")
+    (tmp_path / "store.db").mkdir()
+    expected = f"cannot open store at {path}: disk I/O error"
+    with pytest.raises(SpecError) as excinfo:
+        store.Store.open_readonly(path)
+    assert str(excinfo.value) == expected
