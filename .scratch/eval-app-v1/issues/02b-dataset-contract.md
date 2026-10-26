@@ -6,8 +6,8 @@
 
 **Status:** ready-for-agent
 
-- [ ] Datasets load by extension: CSV (RFC 4180, UTF-8), JSONL, JSON (one object per line); any other extension is a load-time contract failure.
-- [ ] R1 fail-fast set (exit 2, naming file and line): missing/unreadable file, bad extension, declared purpose field absent, malformed rows (CSV column-count mismatch, duplicate header names; JSONL non-JSON line), zero entries, empty transcript value, entry-id field declared but any id empty. No transcript-length checks of any kind.
+- [x] Datasets load by extension: CSV (RFC 4180, UTF-8), JSONL, JSON (one object per line); any other extension is a load-time contract failure.
+- [x] R1 fail-fast set (exit 2, naming file and line): missing/unreadable file, bad extension, declared purpose field absent, malformed rows (CSV column-count mismatch, duplicate header names; JSONL non-JSON line), zero entries, empty transcript value, entry-id field declared but any id empty. No transcript-length checks of any kind.
 
 ## Settled design (implement as written; do not re-derive from the docs)
 
@@ -38,3 +38,4 @@
 - One commit including this ticket file: `git -c user.name="Codex" -c user.email="codex@local" commit -m "feat: ticket 02b — dataset load contract"`.
 
 ## Comments
+2026-10-26 — Added collect mode (_load -> entries, id_map, errors) with R1 checks (duplicate CSV column names, empty transcript, empty/duplicate entry ids, empty reference, value checks only for parsed rows); load_dataset raises errors[0], fail-fast strings byte-identical; added tests/test_dataset_contract.py (21 tests).
