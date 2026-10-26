@@ -9,6 +9,12 @@ import harness
 def test_all_six_subcommands_run(tmp_path, command):
     harness.standard_workspace(tmp_path)
     result = harness.run_cli([command], cwd=tmp_path)
+    if command == "check":
+        result.assert_exit(2)
+        assert result.with_prefix("error:") == [
+            "error: no server section in config (no fallback launch)"
+        ]
+        return
     result.assert_exit(0)
     assert not result.with_prefix("error:")
 

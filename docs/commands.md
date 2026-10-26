@@ -174,11 +174,11 @@ default_judges absent):
       default_metrics:               rouge_l
       registered, not named there:   bertscore, bleu
     judges (configured: 1):
-      default_judges:                (absent ⇒ all configured)
-      configured, not named there:   openrouter-llama-3-70b
+      default_judges:                openrouter-llama-3-70b
+      configured, not named there:   (none)
 
-In that illustration the judges lines show the present-case shape: with
-`default_judges` absent, group 1 is all configured and group 2 is none.
+In that illustration the judges lines show the absent-case shape: with
+`default_judges` absent, group 1 is all configured and group 2 is (none).
 
 Every registered metric and configured judge appears in exactly one group. A non-empty
 "not named there" group means "these exist but will not run by default".
@@ -186,9 +186,9 @@ Every registered metric and configured judge appears in exactly one group. A non
 Against the repo's config.json (assuming the files it references exist):
 
     $ <app> check
-    metrics (registered: 4):
+    metrics (registered: 5):
       default_metrics:               faithfulness, key_claim_completeness, conciseness_length_proxy, structural_instruction_check
-      registered, not named there:   (none)
+      registered, not named there:   internal_consistency
     judges (configured: 1):
       default_judges:                openrouter-llama-3-70b
       configured, not named there:   (none)

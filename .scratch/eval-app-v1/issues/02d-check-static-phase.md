@@ -6,10 +6,10 @@
 
 **Status:** ready-for-agent
 
-- [ ] The `check` static phase collects and prints ALL failures in one pass, then exits 2; the live phase is skipped (deliberate contrast to the fail-fast run commands).
-- [ ] `check` errors carry the valid sets (e.g. an unknown metric lists the registered metrics; an unknown judge lists the configured judges).
-- [ ] Scorer discovery is printed regardless of store presence, in two disjoint groups per family (named in the relevant default vs. registered/configured but not named there); every registered metric and configured judge appears in exactly one group.
-- [ ] Against the normative example configuration at the repo root (whose data, prompt, and model paths are illustrative and absent), `check` reports those missing-file contract failures and exits 2 — the expected first end-to-end demo until the files exist.
+- [x] The `check` static phase collects and prints ALL failures in one pass, then exits 2; the live phase is skipped (deliberate contrast to the fail-fast run commands).
+- [x] `check` errors carry the valid sets (e.g. an unknown metric lists the registered metrics; an unknown judge lists the configured judges).
+- [x] Scorer discovery is printed regardless of store presence, in two disjoint groups per family (named in the relevant default vs. registered/configured but not named there); every registered metric and configured judge appears in exactly one group.
+- [x] Against the normative example configuration at the repo root (whose data, prompt, and model paths are illustrative and absent), `check` reports those missing-file contract failures and exits 2 — the expected first end-to-end demo until the files exist.
 
 ## Settled design (implement as written; do not re-derive from the docs)
 
@@ -63,3 +63,4 @@ New files (one per check area, under `tests/`): `test_check_config.py`, `test_ch
 - One commit including this ticket file: `git -c user.name="Codex" -c user.email="codex@local" commit -m "feat: ticket 02d — check static phase"`.
 
 ## Comments
+2026-10-26 — implemented the check static phase end-to-end (collect-all with exit 2, byte-exact 6-line scorer discovery, static file checks, read-only store handling with --create-store opt-in); suite green at 309 passed, 1 skipped, with the serverless-test flips and the docs/commands.md example fixes in the same round.

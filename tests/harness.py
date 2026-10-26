@@ -16,6 +16,7 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from evalapp.cli import main  # noqa: E402
+from evalapp.metrics import registered_names  # noqa: E402
 
 
 @dataclass
@@ -120,3 +121,46 @@ def plan_count(result, command, dataset):
         ):
             return int(line.split()[2])
     return None
+
+
+ALL_METRICS = list(registered_names())
+
+
+def add_server_section(path, port=8081):
+    """Give the config a minimal valid server section (check's static stage)."""
+    with open(path, "r", encoding="utf-8") as handle:
+        config = json.load(handle)
+    config["server"] = {
+        "command": "/bin/true",
+        "args": {},
+        "env": {},
+        "port": port,
+        "startup_timeout_s": 120,
+    }
+    write_text(path, json.dumps(config, indent=2) + "\n")
+    return path
+
+
+def discovery_lines(metric_named, metric_other, judge_named, judge_other):
+    """The byte-exact six-line scorer-discovery block."""
+    def value(label, names):
+        return f"  {label}:".ljust(33) + (", ".join(names) if names else "(none)")
+    return [
+        f"metrics (registered: {len(metric_named) + len(metric_other)}):",
+        value("default_metrics", metric_named),
+        value("registered, not named there", metric_other),
+        f"judges (configured: {len(judge_named) + len(judge_other)}):",
+        value("default_judges", judge_named),
+        value("configured, not named there", judge_other),
+    ]
+
+
+STANDARD_DISCOVERY = discovery_lines(ALL_METRICS, [], [], [])
+
+REPO_DISCOVERY = discovery_lines(
+    ["faithfulness", "key_claim_completeness",
+     "conciseness_length_proxy", "structural_instruction_check"],
+    ["internal_consistency"],
+    ["openrouter-llama-3-70b"],
+    [],
+)

@@ -126,27 +126,9 @@ def _run_command(command, args, console):
 
 
 def _check(args, console):
-    if args.server_args is not None:
-        _parse_json_object(args.server_args, "--server-args")
-    if args.server_env is not None:
-        _parse_json_object(args.server_env, "--server-env")
-    config = _load(args, console)
-    declared = validate_datasets(config)
-    console.plan("check", f"{len(declared)} datasets")
-    store_path = effective_store_path(config, args.store)
-    if args.create_store:
-        store = Store(store_path)
-        created = store.created
-        store.close()
-        if created:
-            console.note(f"created empty store at {store_path}")
-    else:
-        store = Store.open_readonly(store_path)
-        if store is None:
-            console.note(f"no store at {store_path}")
-        else:
-            store.close()
-    return 0
+    from . import check_static
+
+    return check_static.run_check(args, console)
 
 
 def _score(args, console):

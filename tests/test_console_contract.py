@@ -28,10 +28,12 @@ def test_message_order_warn_plan_note(tmp_path):
         store="store.db",
         extra_top_level={"bogus_key": 1},
     )
+    harness.add_server_section(str(tmp_path / "config.json"))
     result = harness.run_cli(["check"], cwd=tmp_path)
     result.assert_exit(0)
     assert result.lines == [
-        "warn: unrecognized field 'bogus_key' in config",
+        "warn: unrecognized field 'bogus_key' in config"
+    ] + harness.STANDARD_DISCOVERY + [
         "plan(check): 1 datasets",
         "note: no store at store.db",
     ]

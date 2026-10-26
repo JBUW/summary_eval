@@ -78,6 +78,7 @@ def test_score_gate_before_json_parse(tmp_path):
 
 def test_check_absent_store_not_created(tmp_path):
     harness.standard_workspace(tmp_path)
+    harness.add_server_section(str(tmp_path / "config.json"))
     result = harness.run_cli(["check"], cwd=tmp_path)
     result.assert_exit(0)
     assert "note: no store at store.db" in result.lines
@@ -88,6 +89,7 @@ def test_check_zero_table_store_is_valid_empty(tmp_path):
     harness.standard_workspace(tmp_path)
     db = sqlite3.connect(str(tmp_path / "store.db"))
     db.close()
+    harness.add_server_section(str(tmp_path / "config.json"))
     result = harness.run_cli(["check"], cwd=tmp_path)
     result.assert_exit(0)
     assert not result.with_prefix("note: created empty store")
@@ -98,6 +100,7 @@ def test_check_valid_store_passes(tmp_path):
     harness.standard_workspace(tmp_path)
     opened = store.Store(str(tmp_path / "store.db"))
     opened.close()
+    harness.add_server_section(str(tmp_path / "config.json"))
     result = harness.run_cli(["check"], cwd=tmp_path)
     result.assert_exit(0)
     assert not result.with_prefix("error:")
@@ -109,14 +112,19 @@ def test_check_mismatch_store_errors(tmp_path):
     db.execute("CREATE TABLE wrong_table (x TEXT)")
     db.commit()
     db.close()
+    harness.add_server_section(str(tmp_path / "config.json"))
     result = harness.run_cli(["check"], cwd=tmp_path)
     result.assert_exit(2)
     expected = store._MISMATCH.format(path="store.db")
-    assert result.lines == ["plan(check): 2 datasets", f"error: {expected}"]
+    assert result.lines == harness.STANDARD_DISCOVERY + [
+        "plan(check): 2 datasets",
+        f"error: {expected}",
+    ]
 
 
 def test_check_create_store_bootstraps(tmp_path):
     harness.standard_workspace(tmp_path)
+    harness.add_server_section(str(tmp_path / "config.json"))
     result = harness.run_cli(["check", "--create-store"], cwd=tmp_path)
     result.assert_exit(0)
     assert "note: created empty store at store.db" in result.lines
