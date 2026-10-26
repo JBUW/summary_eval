@@ -33,8 +33,8 @@
 
 ## Definition of done
 
-- `/usr/local/py-utils/bin/pytest tests/ -q` stays green (baseline **146 passed**); stdlib only.
-- Tick all boxes in this ticket.
+- `/usr/local/py-utils/bin/pytest tests/ -q` stays green (baseline **146 passed**); stdlib only. (NOT `/usr/local/python/current/bin/python3` — 3.14.8, no pytest installed.)
+- Tick all boxes in this ticket and append a `## Comments` line (date + what was implemented).
 - One commit including this ticket file: `git -c user.name="Codex" -c user.email="codex@local" commit -m "feat: ticket 02b — dataset load contract"`.
 
 ## Comments

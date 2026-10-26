@@ -21,6 +21,7 @@
 - `plan(check): N datasets` emitted only when config-shape is clean (after discovery, before file checks); NOT on the error exit-2 path.
 - Judge env check uses `os.environ.get(var)` — unset OR `""` ⇒ error; only for judges whose api_key_env is a str (shape errors already reported otherwise).
 - `default_metrics`/`default_judges` discovery uses the raw list values (non-str skipped, unknowns filtered, dedupe keep-first).
+- **Stale-handoff guard (resolved contradiction — final design wins):** the 2026-10-25 session handoffs 07 (15:00) and 08 (15:09) claimed "absent server must not fail / check exits 0 on the standard workspace" and "remove the `plan(check)` line" — both **wrong**; an absent server **is** a check error (`no server section in config (no fallback launch)`), firing in the static stage **after** the `plan(check): N datasets` line, which is **kept** (146 existing tests + docs depend on it).
 
 ## Current state (re-verified; rely on it)
 
@@ -42,15 +43,23 @@
 
 ## Tests to add
 
+New files (one per check area, under `tests/`): `test_check_config.py`, `test_check_summarizers.py`, `test_check_judges.py`, `test_check_datasets.py`, `test_check_discovery.py`, `test_check_overrides.py`, `test_check_port_store.py` (monkeypatch `check_static.port_is_free` where needed), `test_check_repo_demo.py`.
+
 - Check static end-to-end (all-error collection + exit 2; discovery byte-exact incl. `ljust(33)` + `(none)`; store absent note; `--create-store`; read-only schema mismatch; port-bound — bind a socket in-test on a random port; `--probe-judges` env).
-- Repo-`config.json` demo (box 14): `run_cli(["check"], cwd=REPO_ROOT)` ⇒ exit 2 with the missing-file errors; guard the port-8080 case.
-- Existing-test flips (serverless workspaces now exit 2): the exact list is in `.scratch/eval-app-v1/session-rescue.md` ("Test plan for ticket 02").
+- Repo-`config.json` demo (box 14): `run_cli(["check"], cwd=REPO_ROOT)` ⇒ exit 2 with the missing-file errors; assert **no** `evalstore.sqlite3` is created (read-only default — the repo config store is `evalstore.sqlite3`); guard the port-8080 case.
+- Existing-test flips (serverless workspaces now exit 2 — the `plan(check)` line still prints on a clean config; store handling only runs after all static checks pass, so a serverless workspace now exits 2 before `note: no store`):
+  - `tests/test_config_flags.py::test_default_config_name` + `test_explicit_config_flag`: keep `plan(check): 2 datasets`, flip `assert_exit(0)` → `assert_exit(2)`.
+  - `tests/test_config_flags.py::test_store_override`: exit 0→2; give the config a `server` section to still reach store handling and exercise the override.
+  - `tests/test_config_flags.py::test_config_file_never_written` (params check/generate/clear, all currently expect exit 0): parametrize the expected code (check=2, generate=0, clear=0).
+  - `tests/test_subcommands.py::test_all_six_subcommands_run` (all six expect exit 0): special-case `check` (now exit 2, no-server error).
+  - `tests/test_console_contract.py::test_message_order_warn_plan_note`: new order warn → 6-line discovery → (needs a server section) `note: no store at store.db`.
+  - `tests/test_dataset_loader.py` stays green untouched (fail-fast semantics byte-identical).
 
 ## Definition of done
 
-- `/usr/local/py-utils/bin/pytest tests/ -q` stays green (baseline **146 passed**); stdlib only.
+- `/usr/local/py-utils/bin/pytest tests/ -q` stays green (baseline **146 passed**); stdlib only. (NOT `/usr/local/python/current/bin/python3` — 3.14.8, no pytest installed.)
 - Manual `check` against the repo `config.json` (exit 2 on the missing files is the expected first demo); iterate ≤3× on failures.
-- Tick all boxes in this ticket.
+- Tick all boxes in this ticket and append a `## Comments` line (date + what was implemented).
 - One commit including this ticket file: `git -c user.name="Codex" -c user.email="codex@local" commit -m "feat: ticket 02d — check static phase"`.
 
 ## Comments

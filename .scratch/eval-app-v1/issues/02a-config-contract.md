@@ -6,6 +6,8 @@
 
 **Status:** ready-for-agent
 
+**Series note (02a–02d):** implement the four parts sequentially in a single context — no subagent orchestration; each part is self-contained and commits on its own.
+
 - [ ] Strict JSON configuration: duplicate keys in a definition section ⇒ `error: duplicate name '<x>' in <section>`; `*` used as a name ⇒ error; unrecognized fields ⇒ `warn: unrecognized field '<name>' in <location>` only; the open maps (`server.args`, `model_args`, `gen_params`, `env`) are exempt from recognition.
 - [ ] Every summarizer resolves at load time to a full four-tuple (model + model_args + prompt template + gen_params); `base` copy-then-override names an earlier summarizer (later ⇒ static error); a stray `path` in a summarizer ⇒ error.
 - [ ] model_args resolution is a two-layer merge (model entry, then summarizer override per key); the model path is never overridable from a summarizer; `server.args` never layers into model_args.
@@ -49,8 +51,8 @@
 
 ## Definition of done
 
-- `/usr/local/py-utils/bin/pytest tests/ -q` stays green (baseline **146 passed**); stdlib only.
-- Tick all boxes in this ticket.
+- `/usr/local/py-utils/bin/pytest tests/ -q` stays green (baseline **146 passed**); stdlib only. (NOT `/usr/local/python/current/bin/python3` — 3.14.8, no pytest installed.)
+- Tick all boxes in this ticket and append a `## Comments` line (date + what was implemented).
 - One commit including this ticket file: `git -c user.name="Codex" -c user.email="codex@local" commit -m "feat: ticket 02a — config strict contract"`.
 
 ## Comments
