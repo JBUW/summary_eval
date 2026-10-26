@@ -2,10 +2,10 @@
 
 Purpose: persist the in-log progress from the failed ticket-02 implementation
 sessions so a fresh session can continue with minimal rework. The settled
-design itself is authoritative and lives in
-`.scratch/eval-app-v1/ticket-02-design.md` — this file adds only what exists
-solely in session logs (timeline, environment facts, conclusions, test
-planning). Do not re-derive the design; read that file first.
+design itself is authoritative and lives in the four ticket-02 sub-tickets
+(`02a`–`02d`) under `.scratch/eval-app-v1/issues/` — this file adds only what
+exists solely in session logs (timeline, environment facts, conclusions, test
+planning). Do not re-derive the design; read those first.
 
 ## Session timeline (log dir `/workspaces/devcontainer/.codex/sessions/2026/10/25/`)
 
@@ -13,7 +13,7 @@ planning). Do not re-derive the design; read that file first.
 |---|---|---|
 | `10-17-43-…` | 15 | Early routing chatter, no ticket-02 content. |
 | `10-48-29-…` | 13 | Short `$ask-matt` routing session; no code. |
-| `10-52-01-01a172b0-…` | 4352 | **Main implement-spec session** (~10:52→18:54 UTC, ~28 compactions). All ticket-02 investigation (every source file, test, harness, doc read) + 12 intermediate handoffs, dumped to `/tmp/handoffs/01-1103-checkpoint.txt` … `12-1633-handoff.txt`. **Zero code written.** Ends with the final settled design (final handoff at line 4196 of that log), extracted to `ticket-02-design.md`. |
+| `10-52-01-01a172b0-…` | 4352 | **Main implement-spec session** (~10:52→18:54 UTC, ~28 compactions). All ticket-02 investigation (every source file, test, harness, doc read) + 12 intermediate handoffs, dumped to `/tmp/handoffs/01-1103-checkpoint.txt` … `12-1633-handoff.txt`. **Zero code written.** Ends with the final settled design (final handoff at line 4196 of that log), now integrated into the `02a`–`02d` sub-tickets. |
 | `10-53-02-…` | 59 | Short `$ask-matt` routing session; no code. |
 | `18-54-27-…` | 682 | Diagnostic session after the main session died: confirmed nothing was lost on disk (no stray worktrees with ticket-02 code), committed the rescued design doc as `839278c`. |
 | `21-03-54-…` | 543 | Prior rescue attempt: extracted the 12 handoffs to `/tmp/handoffs/`, then died on `NameError: re`. This file is the completed version of that rescue. |
