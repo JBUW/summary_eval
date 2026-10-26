@@ -4,7 +4,7 @@
 
 ## State
 - Repo `/workspaces/devcontainer/project`, branch `integrate/eval-app-v1`, HEAD `3cb4077`, clean tree. Baseline: `/usr/local/py-utils/bin/pytest tests/ -q` → **146 passed** (must stay green). Stdlib only; sandbox: `socket.socket()` ⇒ `PermissionError` (treat port as FREE); network restricted; writable = project + /tmp.
-- Task: implement `.scratch/eval-app-v1/issues/02-config-datasets-check-static.md` (14 boxes). All error strings in the previous handoff section "Authoritative error strings" below are verbatim-verified against `docs/config.md` / `docs/commands.md` — keep EXACT.
+- Task: implement ticket 02 — now split into parts `02a-config-contract.md`, `02b-dataset-contract.md`, `02c-check-plumbing.md`, `02d-check-static-phase.md` under `.scratch/eval-app-v1/issues/` (A/B/C independent, D after A+B+C; box 8/R2 is out of scope — ticket 06). All error strings in the previous handoff section "Authoritative error strings" below are verbatim-verified against `docs/config.md` / `docs/commands.md` — keep EXACT.
 
 ## What I re-verified this session (facts you can rely on)
 - **`evalapp/config.py` (127L):** `load_config(path, explicit, console)` fail-fast (FileNotFound→2 msgs, OSError→`cannot read config file: {p}: {detail}`, JSONDecodeError→`invalid JSON in {p}: {exc}`, not-dict→`invalid JSON in {p}: top-level value must be an object`). Dups + top-level unrecognized warns live in `_convert` (via `_Pairs`/`_object_pairs_hook`); `KNOWN_TOP_LEVEL_FIELDS` = 9. `validate_datasets(config)` fail-fast (declared dict: path, transcript_field, reference_field, entry_id_field=None). `effective_store_path(config, override)`: override → config `store` (non-empty str else `config 'store' must be a non-empty string`) → `store.db`.
@@ -57,7 +57,7 @@
 5. **Tests to add:** config contract (sections, names, reserved, warns incl. `config.server`/entry locations, defaults), summarizer resolution (base chains, per-key merge, unresolvable base ⇒ base error + component errors), judge contract/placeholders, R1 dataset checks in BOTH fail-fast and collect modes, check static end-to-end (all-error collection + exit 2; discovery byte-exact incl. ljust + `(none)`; store absent note; `--create-store`; read-only schema mismatch; port-bound — bind a socket in-test on a random port; `--probe-judges` env), score `--server-*` gate (before config load: missing config + `--server-port` ⇒ the gate error, not the config error), repo-`config.json` demo (box 14: `run_cli(["check"], cwd=REPO_ROOT)` ⇒ exit 2 with missing-file errors; guard port-8080 case).
 6. **`docs/commands.md` stale examples (fix in same commit):** (a) "Against the repo's config.json" block: `metrics (registered: 4):` → `metrics (registered: 5):` and `registered, not named there:   (none)` → `registered, not named there:   internal_consistency`; (b) hypothetical block: line `default_judges:                (absent ⇒ all configured)` is not rendered — replace with `default_judges:                openrouter-llama-3-70b` and `configured, not named there:   (none)`, and fix the following paragraph accordingly (absent ⇒ group 1 = all configured, group 2 = (none)).
 7. Run `/usr/local/py-utils/bin/pytest tests/ -q` (146 must stay green) + manual `check` against repo `config.json`.
-8. **Single commit** (include the ticket file): `git -c user.name="Codex" -c user.email="codex@local" commit -m "feat: ticket 02 — config + datasets + check static phase"`. AGENTS.md: ALWAYS pass identity explicitly; no other commits; domain docs updated in same round as behavior changes (only `docs/commands.md` needs updating; `docs/config.md` already states the contract).
+8. **One commit per part** (02a–02d, each including its ticket file): `git -c user.name="Codex" -c user.email="codex@local" commit -m "feat: ticket 02x — <part>"`. AGENTS.md: ALWAYS pass identity explicitly; no other commits; domain docs updated in same round as behavior changes (only `docs/commands.md` needs updating — ships with 02d; `docs/config.md` already states the contract).
 
 ## Open micro-decisions (mine, apply unless something contradicts)
 - `plan(check): N datasets` emitted only when config-shape is clean (after discovery, before file checks); NOT on the error exit-2 path.
@@ -70,4 +70,4 @@
 2. Add tests (item 5).
 3. Fix `docs/commands.md` (item 6).
 4. Full pytest + manual repo-config check; iterate ≤3× on failures.
-5. Single commit with explicit identity.
+5. One commit per part with explicit identity.
