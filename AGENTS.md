@@ -15,6 +15,13 @@ Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents
 `docs/commands.md` is the how-to and agent reference for all subcommands; any decision that changes CLI behavior updates it in the same round as the log entry.
 `docs/design.md` is the Phase 0 design document — how the settled decisions fit into an implementable system; any decision that changes the design updates it in the same round as the log entry.
 
+## Ticket progress
+
+Per-effort decisions live in the effort map `.scratch/<feature>/map.md` (Notes / Decisions-so-far / Fog; per `docs/agents/issue-tracker.md`).
+
+- Write a ticket's settled design decisions into the map's Decisions-so-far before writing its code; a handoff points at the map instead of restating the decisions.
+- A ticket is done when it is committed. Resume a ticket with no new commit by writing the smallest code slice first, then re-reading only what a failing test names.
+
 ## Git
 
 ### Commit identity
