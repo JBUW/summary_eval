@@ -21,6 +21,7 @@ Per-effort decisions live in the effort map `.scratch/<feature>/map.md` (Notes /
 
 - Write a ticket's settled design decisions into the map's Decisions-so-far before writing its code; a handoff points at the map instead of restating the decisions.
 - A ticket is done when it is committed. Resume a ticket with no new commit by writing the smallest code slice first, then re-reading only what a failing test names.
+- `bin/check` (the pytest suite) green + commit = ticket done.
 
 ## Git
 
