@@ -28,3 +28,7 @@ Per-effort decisions live in the effort map `.scratch/<feature>/map.md` (Notes /
 ### Commit identity
 
 Agent commits must always pass the identity explicitly: `git -c user.name="Codex" -c user.email="codex@local" ...`. The agent must not use the identity set in the repository config (`.git/config`).
+
+### Pre-commit hook
+
+Commits are gated by `hooks/pre-commit`, which runs `bin/check`; a red suite aborts the commit. A fresh clone must activate it first: `git config core.hooksPath hooks`. Bypass only when deliberately committing red: `git commit --no-verify`.
