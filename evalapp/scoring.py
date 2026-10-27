@@ -14,6 +14,7 @@ from . import metrics
 from .errors import RuntimeFailure, SpecError
 from .identities import (
     canonical_json,
+    judge_id,
     generation_id,
     metric_evaluation_id,
     model_id,
@@ -58,6 +59,16 @@ class MetricsPhaseResult:
     skipped: int
     excluded: int
     dropped: int
+
+
+@dataclass(frozen=True)
+class ScorePlan:
+    metrics: int
+    judges: int
+    items: int
+    to_run: int
+    already_scored: int
+    infeasible_pairs: int
 
 
 def resolve_scorers(resolved, metrics_flag, judges_flag):
@@ -232,6 +243,71 @@ def run_metrics_phase(
         skipped=skipped,
         excluded=excluded,
         dropped=dropped,
+    )
+
+
+def score_plan(store, resolved, scorers, infeasible, datasets, selected, summarizers):
+    """Resume pre-scan: every (item, scorer) unit counts "to run" or
+    "already scored" by evaluation-row existence alone — no generation
+    fetch, no reference parsing, so an uncommitted generation (a
+    --generate run) still reports the full remainder before generate."""
+    surfaces = {}
+    judge_shas = {}
+    items = to_run = already_scored = 0
+    for dataset in datasets.values():
+        for index in selected[dataset.name]:
+            entry = dataset.entries[index]
+            transcript_sha = transcript_id(entry["transcript"])
+            for summarizer in summarizers:
+                items += 1
+                surface_key = (
+                    summarizer.model,
+                    canonical_json(summarizer.model_args),
+                    summarizer.template,
+                    canonical_json(summarizer.gen_params),
+                )
+                surface = surfaces.get(surface_key)
+                if surface is None:
+                    surface = _item_surface(resolved, summarizer)
+                    surfaces[surface_key] = surface
+                model_sha, _template, template_sha = surface
+                generation_sha = generation_id(
+                    transcript_sha, model_sha, summarizer.model_args,
+                    template_sha, summarizer.gen_params,
+                )
+                for name in scorers.metrics:
+                    if (name, dataset.name) in infeasible:
+                        continue
+                    if store.has_metric_evaluation(name, generation_sha):
+                        already_scored += 1
+                    else:
+                        to_run += 1
+                for name in scorers.judges:
+                    if (name, dataset.name) in infeasible:
+                        continue
+                    judge_sha = judge_shas.get(name)
+                    if judge_sha is None:
+                        judge_sha = _judge_sha(resolved, name)
+                        judge_shas[name] = judge_sha
+                    if store.has_judge_evaluation(judge_sha, generation_sha):
+                        already_scored += 1
+                    else:
+                        to_run += 1
+    return ScorePlan(
+        metrics=len(scorers.metrics),
+        judges=len(scorers.judges),
+        items=items,
+        to_run=to_run,
+        already_scored=already_scored,
+        infeasible_pairs=len(infeasible),
+    )
+
+
+def _judge_sha(resolved, name):
+    entry = resolved["judges"][name]
+    return judge_id(
+        entry["model_name"], entry["gen_params"], entry["system_content"],
+        entry["user_template"], entry["requires_reference"],
     )
 
 
