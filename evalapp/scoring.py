@@ -454,6 +454,46 @@ def run_judges_phase(
     )
 
 
+def score(
+    resolved, store_path, metrics_flag, judges_flag, datasets, selected,
+    summarizer_selection, console, client, judge_call, generate=None,
+):
+    """Full score run: pre-effect (scorers, summarizers, infeasible warns)
+    before the store, then plan (resume pre-scan) BEFORE generate, then the
+    generate hook if any (a stage-1 RuntimeFailure propagates before any
+    scoring), then the metrics phase (a failure propagates before any judge
+    call), then the judges phase; the store closes in a finally. Returns
+    (scorers, plan, metrics_result, judges_result)."""
+    scorers = resolve_scorers(resolved, metrics_flag, judges_flag)
+    summarizers = select_summarizers(resolved, *summarizer_selection)
+    pairs = infeasible_pairs(resolved, scorers, datasets)
+    for kind, name, dataset_name in pairs:
+        console.warn(
+            f"{kind} '{name}' requires reference summaries; "
+            f"dataset '{dataset_name}' has none (pair skipped)"
+        )
+    infeasible = {(name, dataset_name) for _, name, dataset_name in pairs}
+    store = Store(store_path)
+    try:
+        plan = score_plan(
+            store, resolved, scorers, infeasible, datasets, selected,
+            summarizers,
+        )
+        if generate is not None:
+            generate(store, console)
+        metrics_result = run_metrics_phase(
+            store, resolved, scorers, infeasible, datasets, selected,
+            summarizers, console,
+        )
+        judges_result = run_judges_phase(
+            store, resolved, scorers, infeasible, datasets, selected,
+            summarizers, client, judge_call, console,
+        )
+    finally:
+        store.close()
+    return scorers, plan, metrics_result, judges_result
+
+
 def _item_surface(resolved, summarizer):
     """(model_sha, template, template_sha) for one summarizer; the model
     file and the template file are each read at most once per phase."""

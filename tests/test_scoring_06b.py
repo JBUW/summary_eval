@@ -1,15 +1,18 @@
-"""Ticket 06b — score_plan (resume pre-scan) and the judges phase
-(faked judge_call seam), docs/commands.md §score."""
+"""Ticket 06b — score_plan (resume pre-scan), the judges phase (faked
+judge_call seam), and the score orchestrator, docs/commands.md §score."""
 import json
 
 import pytest
 
 from evalapp import scoring
 from evalapp.datasets import Dataset
-from evalapp.errors import RuntimeFailure
+from evalapp.errors import RuntimeFailure, SpecError
 from evalapp.identities import judge_evaluation_id, judge_id, summary_id
+from evalapp.metrics import registered_names
 from evalapp.scoring import (
+    Flag,
     JudgePhaseResult,
+    MetricsPhaseResult,
     ResolvedScorers,
     ScorePlan,
     run_judges_phase,
@@ -295,6 +298,199 @@ def test_resume_skips_existing_unit_without_call(tmp_path):
         failed=0,
     )
     assert fake.calls == []
+
+
+def _score(
+    resolved, store_path, console, datasets, selected, metrics_flag=Flag(),
+    judges_flag=Flag(), generate=None,
+):
+    return scoring.score(
+        resolved,
+        store_path,
+        metrics_flag,
+        judges_flag,
+        datasets,
+        selected,
+        (None, None, None),
+        console,
+        "client-obj",
+        _JudgeFake({}),
+        generate,
+    )
+
+
+def test_spec_error_raises_before_store_created(tmp_path):
+    model_path, template_path = _workspace(tmp_path)
+    resolved = _resolved(model_path, template_path)
+    store_path = tmp_path / "store.db"
+    with pytest.raises(SpecError):
+        _score(
+            resolved,
+            store_path,
+            _RecordingConsole(),
+            {"ds": _dataset()},
+            {"ds": [0]},
+            metrics_flag=Flag(value=["*"], no=True),
+        )
+    assert not store_path.exists()
+
+
+def test_orchestrator_order_warn_plan_generate_metrics_judges(
+    tmp_path, monkeypatch
+):
+    model_path, template_path = _workspace(tmp_path)
+    resolved = _resolved(
+        model_path,
+        template_path,
+        judges={"j": _judge_entry(requires_reference=True)},
+    )
+    events = []
+    store_seen = []
+    console = _RecordingConsole()
+
+    def fake_plan(store, r, scorers, infeasible, datasets, selected, summarizers):
+        events.append(("plan", len(console.warnings)))
+        store_seen.append(store)
+        return ScorePlan(5, 1, 3, 9, 0, 2)
+
+    def fake_generate(store, c):
+        events.append("generate")
+        store_seen.append(store)
+
+    def fake_metrics(store, r, scorers, infeasible, datasets, selected, summarizers, c):
+        events.append("metrics")
+        store_seen.append(store)
+        return MetricsPhaseResult(3, 0, 9, 0, 0, 0)
+
+    def fake_judges(store, r, scorers, infeasible, datasets, selected, summarizers, client, judge_call, c):
+        events.append("judges")
+        store_seen.append(store)
+        return JudgePhaseResult(3, 0, 3, 0, 0, 0)
+
+    monkeypatch.setattr("evalapp.scoring.score_plan", fake_plan)
+    monkeypatch.setattr("evalapp.scoring.run_metrics_phase", fake_metrics)
+    monkeypatch.setattr("evalapp.scoring.run_judges_phase", fake_judges)
+
+    scorers, plan, metrics_result, judges_result = _score(
+        resolved,
+        tmp_path / "store.db",
+        console,
+        {"ds": _dataset()},
+        {"ds": [0, 1, 2]},
+        judges_flag=Flag(value=["j"]),
+        generate=fake_generate,
+    )
+    assert events == [("plan", 2), "generate", "metrics", "judges"]
+    assert len(store_seen) == 4
+    assert all(store is store_seen[0] for store in store_seen)
+    assert scorers == ResolvedScorers(
+        metrics=registered_names(), judges=("j",), notes=()
+    )
+    assert plan == ScorePlan(5, 1, 3, 9, 0, 2)
+    assert metrics_result == MetricsPhaseResult(3, 0, 9, 0, 0, 0)
+    assert judges_result == JudgePhaseResult(3, 0, 3, 0, 0, 0)
+
+
+def test_generate_failure_propagates_before_any_scoring(tmp_path, monkeypatch):
+    model_path, template_path = _workspace(tmp_path)
+    resolved = _resolved(model_path, template_path)
+    events = []
+
+    def fake_plan(store, r, scorers, infeasible, datasets, selected, summarizers):
+        events.append("plan")
+        return ScorePlan(5, 0, 3, 15, 0, 1)
+
+    def fake_metrics(store, r, scorers, infeasible, datasets, selected, summarizers, c):
+        events.append("metrics")
+        return MetricsPhaseResult(0, 0, 0, 0, 0, 0)
+
+    def fake_judges(store, r, scorers, infeasible, datasets, selected, summarizers, client, judge_call, c):
+        events.append("judges")
+        return JudgePhaseResult(0, 0, 0, 0, 0, 0)
+
+    def boom(store, c):
+        raise RuntimeFailure("generate stage 1 failed")
+
+    monkeypatch.setattr("evalapp.scoring.score_plan", fake_plan)
+    monkeypatch.setattr("evalapp.scoring.run_metrics_phase", fake_metrics)
+    monkeypatch.setattr("evalapp.scoring.run_judges_phase", fake_judges)
+
+    with pytest.raises(RuntimeFailure, match="generate stage 1 failed"):
+        _score(
+            resolved,
+            tmp_path / "store.db",
+            _RecordingConsole(),
+            {"ds": _dataset()},
+            {"ds": [0, 1, 2]},
+            generate=boom,
+        )
+    assert events == ["plan"]
+
+
+def test_metrics_failure_prevents_judges_phase(tmp_path, monkeypatch):
+    model_path, template_path = _workspace(tmp_path)
+    resolved = _resolved(
+        model_path, template_path, judges={"j": _judge_entry()}
+    )
+    events = []
+
+    def fake_plan(store, r, scorers, infeasible, datasets, selected, summarizers):
+        events.append("plan")
+        return ScorePlan(5, 1, 1, 6, 0, 0)
+
+    def fake_metrics(store, r, scorers, infeasible, datasets, selected, summarizers, c):
+        events.append("metrics")
+        raise RuntimeFailure("metric exploded")
+
+    def fake_judges(store, r, scorers, infeasible, datasets, selected, summarizers, client, judge_call, c):
+        events.append("judges")
+        return JudgePhaseResult(0, 0, 0, 0, 0, 0)
+
+    monkeypatch.setattr("evalapp.scoring.score_plan", fake_plan)
+    monkeypatch.setattr("evalapp.scoring.run_metrics_phase", fake_metrics)
+    monkeypatch.setattr("evalapp.scoring.run_judges_phase", fake_judges)
+
+    with pytest.raises(RuntimeFailure, match="metric exploded"):
+        _score(
+            resolved,
+            tmp_path / "store.db",
+            _RecordingConsole(),
+            {"ds": _dataset()},
+            {"ds": [0]},
+            judges_flag=Flag(value=["j"]),
+        )
+    assert events == ["plan", "metrics"]
+
+
+def test_score_without_generate_hook_runs_real_phases(tmp_path):
+    model_path, template_path = _workspace(tmp_path)
+    resolved = _resolved(model_path, template_path)
+    dataset = _dataset()
+    store = Store(tmp_path / "store.db")
+    _commit_generation(store, "t0", 0)
+    store.close()
+    console = _RecordingConsole()
+    scorers, plan, metrics_result, judges_result = _score(
+        resolved,
+        tmp_path / "store.db",
+        console,
+        {"ds": dataset},
+        {"ds": [0]},
+    )
+    assert scorers == ResolvedScorers(
+        metrics=registered_names(), judges=(), notes=()
+    )
+    assert plan == ScorePlan(
+        metrics=5, judges=0, items=1, to_run=4, already_scored=0,
+        infeasible_pairs=1,
+    )
+    assert metrics_result.missing_generation == 0
+    assert metrics_result.committed + metrics_result.excluded == 4
+    assert judges_result == JudgePhaseResult(0, 0, 0, 0, 0, 0)
+    assert console.warnings == [
+        "metric 'key_claim_completeness' requires reference summaries; "
+        "dataset 'ds' has none (pair skipped)"
+    ]
 
 
 def test_missing_generation_counts_and_makes_no_call(tmp_path):
