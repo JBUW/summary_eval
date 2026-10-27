@@ -2,7 +2,7 @@
 
 **What to build:** The complete `score` command: stage 2 of the loop — score committed generations with the effective metric set and/or judge set. The full flag set, the always-printed plan line with the effective scorer set, the exit-0 note lines, `--generate` two-stage invocations, credential preflight, and resume. `score` never generates and never spawns the model server unless `--generate` is given.
 
-**Blocked by:** 05a (Endpoint client), 05b (Model server lifecycle), 05c (`generate`: scope, order, skip, commit), 05d (`generate`: fail-fast, resume, integration), 6 (Scoring pipeline: scorer resolution, feasibility, metrics + judges phases)
+**Blocked by:** 05a (Endpoint client), 05b (Model server lifecycle), 05c (`generate`: scope, order, skip, commit), 05d (`generate`: fail-fast, resume, integration), 06a (Scoring: scorer resolution, feasibility, metrics phase), 06b (Scoring: judges phase, resume, plan line), 06c (Scoring: judge call handling)
 
 **Status:** ready-for-agent
 

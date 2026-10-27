@@ -20,9 +20,20 @@ Read the file at the referenced path. The user will normally pass the path or th
 
 ## Wayfinding operations
 
-Used by `/wayfinder`. The **map** is a file with one **child** file per ticket.
+### The map (every effort)
 
-- **Map**: `.scratch/<effort>/map.md` (the Notes / Decisions-so-far / Fog body).
+Every effort under `.scratch/<effort>/` keeps a map at `.scratch/<effort>/map.md` with a **Notes** / **Decisions-so-far** / **Fog** body:
+
+- **Notes**: effort-level context — planned ticket order, series splits, cross-ticket invariants.
+- **Decisions-so-far**: settled design decisions, appended as they settle, with a pointer to where the decision lives (doc, ADR, or commit).
+- **Fog**: open questions; a question leaves Fog the same round it resolves, moving to Decisions-so-far.
+
+Update the map in the same commit as the decision or ticket state it records.
+
+### Ticket operations (`/wayfinder`)
+
+The map has one **child** file per ticket.
+
 - **Child ticket**: `.scratch/<effort>/issues/NN-<slug>.md`, numbered from `01`, with the question in the body. A `Type:` line records the ticket type (`research`/`prototype`/`grilling`/`task`); a `Status:` line records `claimed`/`resolved`.
 - **Blocking**: a `Blocked by: NN, NN` line near the top. A ticket is unblocked when every file it lists is `resolved`.
 - **Frontier**: scan `.scratch/<effort>/issues/` for files that are open, unblocked, and unclaimed; first by number wins.
