@@ -362,6 +362,30 @@ class Store:
         ).fetchone()
         return row[0] if row else None
 
+    def get_judge_evaluation(self, sha):
+        row = self._execute(
+            "SELECT factual_correctness, completeness, conciseness "
+            "FROM judge_evaluations WHERE judge_evaluation_sha256 = ?",
+            (sha,),
+        ).fetchone()
+        return row if row else None
+
+    def has_metric_evaluation(self, metric_name, generation_sha):
+        row = self._execute(
+            "SELECT 1 FROM metric_evaluations "
+            "WHERE metric_name = ? AND generation_sha256 = ? LIMIT 1",
+            (metric_name, generation_sha),
+        ).fetchone()
+        return row is not None
+
+    def has_judge_evaluation(self, judge_sha, generation_sha):
+        row = self._execute(
+            "SELECT 1 FROM judge_evaluations "
+            "WHERE judge_sha256 = ? AND generation_sha256 = ? LIMIT 1",
+            (judge_sha, generation_sha),
+        ).fetchone()
+        return row is not None
+
     def _upsert(self, table, pk_column, pk_value, columns, values, stamps):
         all_columns = [pk_column, *columns, "updated_at"]
         updates = ", ".join(f"{column} = excluded.{column}" for column in columns)

@@ -432,3 +432,54 @@ def test_transaction_rolls_back_all_statements_on_error(tmp_path, monkeypatch):
         assert _row(path, "SELECT COUNT(*) FROM reference_summaries") == (1,)
     finally:
         opened.close()
+
+
+def test_get_judge_evaluation_returns_qualities_or_none(tmp_path):
+    path = str(tmp_path / "store.db")
+    opened = store.Store(path)
+    try:
+        assert opened.get_judge_evaluation("nope") is None
+        _, _, _, generation_sha, reference_sha = _seed_chain(opened)
+        judge_sha = opened.upsert_judge("pin", {}, "sys", "tpl", False, "j", "https://e/v1", None)
+        sha = opened.upsert_judge_evaluation(judge_sha, generation_sha, reference_sha, 0.9, None, 0.75)
+        assert opened.get_judge_evaluation(sha) == (0.9, None, 0.75)
+        opened.upsert_judge_evaluation(judge_sha, generation_sha, reference_sha, 0.5, 0.5, 0.5)
+        assert opened.get_judge_evaluation(sha) == (0.5, 0.5, 0.5)
+        assert opened.get_judge_evaluation("nope") is None
+    finally:
+        opened.close()
+
+
+def test_has_metric_evaluation_is_row_existence(tmp_path):
+    path = str(tmp_path / "store.db")
+    opened = store.Store(path)
+    try:
+        _, _, _, generation_sha, reference_sha = _seed_chain(opened)
+        assert opened.has_metric_evaluation("rouge_l", generation_sha) is False
+        opened.upsert_metric_evaluation("rouge_l", generation_sha, reference_sha, 0.42)
+        assert opened.has_metric_evaluation("rouge_l", generation_sha) is True
+        # a (metric, generation) row with a different reference still matches
+        opened.upsert_metric_evaluation("rouge_l", generation_sha, None, 0.42)
+        assert opened.has_metric_evaluation("rouge_l", generation_sha) is True
+        assert opened.has_metric_evaluation("other", generation_sha) is False
+        assert opened.has_metric_evaluation("rouge_l", "nope") is False
+    finally:
+        opened.close()
+
+
+def test_has_judge_evaluation_is_row_existence(tmp_path):
+    path = str(tmp_path / "store.db")
+    opened = store.Store(path)
+    try:
+        _, _, _, generation_sha, reference_sha = _seed_chain(opened)
+        judge_sha = opened.upsert_judge("pin", {}, "sys", "tpl", False, "j", "https://e/v1", None)
+        assert opened.has_judge_evaluation(judge_sha, generation_sha) is False
+        opened.upsert_judge_evaluation(judge_sha, generation_sha, reference_sha, 1.0, 1.0, 1.0)
+        assert opened.has_judge_evaluation(judge_sha, generation_sha) is True
+        opened.upsert_judge_evaluation(judge_sha, generation_sha, None, None, None, None)
+        assert opened.has_judge_evaluation(judge_sha, generation_sha) is True
+        other_judge = opened.upsert_judge("pin2", {}, "sys", "tpl", False, "j2", "https://e/v1", None)
+        assert opened.has_judge_evaluation(other_judge, generation_sha) is False
+        assert opened.has_judge_evaluation(judge_sha, "nope") is False
+    finally:
+        opened.close()
