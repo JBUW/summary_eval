@@ -1,8 +1,8 @@
 # 11: `check` live phase + `--probe-judges`
 
-**What to build:** The opt-in live phase of `check`, which runs only if the static phase is clean: local server probes (readiness, trivial completion, context adequacy) and opt-in judge rubric probes that cost almost nothing and flag context-window and rubric problems before a long run. Reuses ticket 05's server lifecycle module and shared launch-line composition, and ticket 07's parser.
+**What to build:** The opt-in live phase of `check`, which runs only if the static phase is clean: local server probes (readiness, trivial completion, context adequacy) and opt-in judge rubric probes that cost almost nothing and flag context-window and rubric problems before a long run. Reuses ticket 05b's server lifecycle module and shared launch-line composition over ticket 05a's endpoint client, and ticket 07's parser.
 
-**Blocked by:** 2 (Configuration + datasets; `check` static phase), 5 (Endpoint client, model server lifecycle, `generate`), 7 (Judge response parser + golden fixtures)
+**Blocked by:** 2 (Configuration + datasets; `check` static phase), 05a (Endpoint client), 05b (Model server lifecycle), 7 (Judge response parser + golden fixtures)
 
 **Status:** ready-for-agent
 
@@ -12,6 +12,6 @@
 - [ ] `--probe-judges` is opt-in (default off; no external or paid call is made by default): one trivial completion per judge, the rubric rendered with placeholder example values only, the response run through the real parser; nothing usable or a transport failure ⇒ exit 1.
 - [ ] A judge whose `api_key_env` variable is unset/empty ⇒ static failure (exit 2).
 - [ ] Exit 0 = static clean and all live probes OK (warnings allowed).
-- [ ] The server lifecycle and launch-line composition come from ticket 05 — no second implementation.
+- [ ] The server lifecycle and launch-line composition come from ticket 05b — no second implementation.
 
 ## Comments
