@@ -158,7 +158,8 @@ def validate_config(config, console):
 
     Returns (errors, resolved): ``errors`` is a list of bare error messages
     (no ``error:`` prefix); ``resolved`` holds the resolved shape of the
-    parts that passed. Only check calls this; run commands stay fail-fast.
+    parts that passed. check and generate call this; errors are collected
+    and returned, never raised.
     """
     errors = []
     resolved = {

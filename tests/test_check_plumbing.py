@@ -152,6 +152,7 @@ def test_check_accepts_all_plumbing_flags(tmp_path):
 @pytest.mark.parametrize("command", ["generate", "sweep"])
 def test_generate_and_sweep_accept_server_flags(tmp_path, command):
     harness.standard_workspace(tmp_path)
+    harness.add_server_section(str(tmp_path / "config.json"))
     result = harness.run_cli(
         [command, "--server-port", "8081", "--server-command", "/bin/true"],
         cwd=tmp_path,

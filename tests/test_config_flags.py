@@ -61,6 +61,8 @@ def test_store_override(tmp_path):
 def test_config_file_never_written(tmp_path, command, expected):
     harness.standard_workspace(tmp_path)
     config_path = str(tmp_path / "config.json")
+    if command == "generate":
+        harness.add_server_section(config_path)
     before = sha256(config_path)
     result = harness.run_cli([command, "--store", "elsewhere/store.db"], cwd=tmp_path)
     result.assert_exit(expected)

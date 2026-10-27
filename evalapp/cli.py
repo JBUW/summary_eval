@@ -1,11 +1,11 @@
 import argparse
 import json
 import os
-import socket
 import sys
 
 from .config import (
     DEFAULT_CONFIG_NAME,
+    validate_config,
     effective_store_path,
     load_config,
     validate_datasets,
@@ -13,6 +13,12 @@ from .config import (
 from .console import Console
 from .datasets import load_dataset
 from .errors import RuntimeFailure, SpecError
+from .model_server import (
+    distinct_model_pairs,
+    effective_server_spec,
+    port_is_free,  # re-exported for check_static
+    prevalidate_launch,
+)
 from .selection import resolve_selection
 from .store import Store
 
@@ -81,25 +87,6 @@ def _load(args, console):
     )
 
 
-def port_is_free(port):
-    """Port pre-scan: socket-creation failure (e.g. sandboxed) counts as
-    free; a bind failure raises SpecError with the bound-port error."""
-    try:
-        probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    except OSError:
-        return True
-    try:
-        probe.bind(("127.0.0.1", port))
-    except OSError:
-        raise SpecError(
-            f"port {port} already bound "
-            "(a previous model server may still be running)"
-        ) from None
-    finally:
-        probe.close()
-    return True
-
-
 def _parse_json_object(value, flag):
     try:
         parsed = json.loads(value)
@@ -122,6 +109,46 @@ def _run_command(command, args, console):
         indices = scope[name]
         if indices:
             console.plan(command, f"{name} {len(indices)} entries")
+    return 0
+
+
+def _generate(args, console):
+    config = _load(args, console)
+    declared = validate_datasets(config)
+    datasets = {name: load_dataset(name, decl) for name, decl in declared.items()}
+    scope = resolve_selection(args.select, datasets)
+    if not any(scope.values()):
+        console.note("no entries in scope; nothing to do")
+        return 0
+    errors, resolved = validate_config(config, console)
+    if errors:
+        for message in errors:
+            console.error(message)
+        return 2
+    args_map = (
+        _parse_json_object(args.server_args, "--server-args")
+        if args.server_args is not None
+        else None
+    )
+    env_map = (
+        _parse_json_object(args.server_env, "--server-env")
+        if args.server_env is not None
+        else None
+    )
+    spec = effective_server_spec(
+        config,
+        command=args.server_command,
+        args_map=args_map,
+        env_map=env_map,
+        port=args.server_port,
+        startup_timeout_s=args.server_startup_timeout,
+    )
+    pairs = distinct_model_pairs(resolved)
+    prevalidate_launch(spec, pairs, resolved["models"])
+    for name, decl in declared.items():
+        indices = scope[name]
+        if indices:
+            console.plan("generate", f"{name} {len(indices)} entries")
     return 0
 
 
@@ -172,7 +199,7 @@ def _sweep(args, console):
 
 _HANDLERS = {
     "check": _check,
-    "generate": lambda args, console: _run_command("generate", args, console),
+    "generate": _generate,
     "score": _score,
     "sweep": _sweep,
     "report": lambda args, console: _run_command("report", args, console),

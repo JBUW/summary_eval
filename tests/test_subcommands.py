@@ -8,6 +8,8 @@ import harness
 )
 def test_all_six_subcommands_run(tmp_path, command):
     harness.standard_workspace(tmp_path)
+    if command == "generate":
+        harness.add_server_section(str(tmp_path / "config.json"))
     result = harness.run_cli([command], cwd=tmp_path)
     if command == "check":
         result.assert_exit(2)

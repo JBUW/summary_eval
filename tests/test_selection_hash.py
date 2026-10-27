@@ -9,6 +9,7 @@ def run_select(workspace, *tokens):
 
 def test_hash_specs_select_counts(tmp_path):
     workspace = harness.standard_workspace(tmp_path)
+    harness.add_server_section(str(workspace / "config.json"))
     cases = {
         ("#0",): 1,
         ("#3-7",): 5,
@@ -33,6 +34,7 @@ def test_hash_specs_reject_invalid(tmp_path):
 
 def test_hash_specs_valid_in_unnamed_datasets(tmp_path):
     workspace = harness.standard_workspace(tmp_path)
+    harness.add_server_section(str(workspace / "config.json"))
     result = run_select(workspace, "unnamed", "#1-4")
     result.assert_exit(0)
     assert harness.plan_count(result, "generate", "unnamed") == 4

@@ -11,11 +11,13 @@ def workspace_with_ids(tmp_path, ids):
         {"named": {"path": "named.jsonl", "transcript_field": "text", "entry_id_field": "id"}},
         store="store.db",
     )
+    harness.add_server_section(str(tmp_path / "config.json"))
     return tmp_path
 
 
 def test_at_spec_selects_one_entry(tmp_path):
     workspace = harness.standard_workspace(tmp_path)
+    harness.add_server_section(str(workspace / "config.json"))
     result = harness.run_cli(
         ["generate", "--select", "named", "@id-03"], cwd=workspace
     )
