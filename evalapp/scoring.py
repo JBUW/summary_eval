@@ -14,6 +14,7 @@ from . import metrics
 from .errors import RuntimeFailure, SpecError
 from .identities import (
     canonical_json,
+    judge_evaluation_id,
     judge_id,
     generation_id,
     metric_evaluation_id,
@@ -69,6 +70,16 @@ class ScorePlan:
     to_run: int
     already_scored: int
     infeasible_pairs: int
+
+
+@dataclass(frozen=True)
+class JudgePhaseResult:
+    items: int
+    missing_generation: int
+    committed: int
+    skipped: int
+    dropped: int
+    failed: int
 
 
 def resolve_scorers(resolved, metrics_flag, judges_flag):
@@ -336,6 +347,111 @@ def score_metrics(
     finally:
         store.close()
     return scorers, result
+
+
+def run_judges_phase(
+    store, resolved, scorers, infeasible, datasets, selected, summarizers,
+    client, judge_call, console,
+):
+    """Judges phase over every item (dataset × selected index ×
+    summarizer), one atomic (item, judge) unit at a time; resume skips a
+    unit whose evaluation row already exists (no call, no tokens)."""
+    if not scorers.judges:
+        return JudgePhaseResult(0, 0, 0, 0, 0, 0)
+    surfaces = {}
+    judge_shas = {}
+    items = missing_generation = committed = skipped = dropped = failed = 0
+    for dataset in datasets.values():
+        for index in selected[dataset.name]:
+            entry = dataset.entries[index]
+            transcript_sha = transcript_id(entry["transcript"])
+            reference = None
+            reference_loaded = False
+            for summarizer in summarizers:
+                items += 1
+                surface_key = (
+                    summarizer.model,
+                    canonical_json(summarizer.model_args),
+                    summarizer.template,
+                    canonical_json(summarizer.gen_params),
+                )
+                surface = surfaces.get(surface_key)
+                if surface is None:
+                    surface = _item_surface(resolved, summarizer)
+                    surfaces[surface_key] = surface
+                model_sha, _template, template_sha = surface
+                generation_sha = generation_id(
+                    transcript_sha, model_sha, summarizer.model_args,
+                    template_sha, summarizer.gen_params,
+                )
+                generation_text = store.get_generation(generation_sha)
+                if generation_text is None:
+                    missing_generation += 1
+                    continue
+                for name in scorers.judges:
+                    if (name, dataset.name) in infeasible:
+                        continue
+                    judge_entry = resolved["judges"][name]
+                    if judge_entry["requires_reference"]:
+                        if not reference_loaded:
+                            reference = _read_reference(dataset.decl, index)
+                            reference_loaded = True
+                        if reference is None:
+                            console.warn(
+                                f"judge '{name}' has no reference "
+                                f"for entry #{index} in dataset "
+                                f"'{dataset.name}' (pair skipped)"
+                            )
+                            dropped += 1
+                            continue
+                    reference_sha = (
+                        summary_id(reference)
+                        if judge_entry["requires_reference"]
+                        else None
+                    )
+                    judge_sha = judge_shas.get(name)
+                    if judge_sha is None:
+                        judge_sha = _judge_sha(resolved, name)
+                        judge_shas[name] = judge_sha
+                    unit_sha = judge_evaluation_id(
+                        judge_sha, generation_sha, reference_sha
+                    )
+                    if store.get_judge_evaluation(unit_sha) is not None:
+                        skipped += 1
+                        continue
+                    scores = judge_call(
+                        client, name, judge_entry, entry["transcript"],
+                        generation_text, reference,
+                    )
+                    if scores is None:
+                        console.warn(
+                            f"judge '{name}' returned no extractable "
+                            f"qualities for entry #{index} in dataset "
+                            f"'{dataset.name}' (unit not committed)"
+                        )
+                        failed += 1
+                        continue
+                    with store.transaction():
+                        if judge_entry["requires_reference"]:
+                            store.upsert_reference_summary(
+                                reference, transcript_sha, dataset.name,
+                                entry.get("entry_id"), index,
+                            )
+                        store.upsert_judge_evaluation(
+                            judge_sha, generation_sha, reference_sha,
+                            scores.get("factual_correctness"),
+                            scores.get("completeness"),
+                            scores.get("conciseness"),
+                        )
+                    committed += 1
+    return JudgePhaseResult(
+        items=items,
+        missing_generation=missing_generation,
+        committed=committed,
+        skipped=skipped,
+        dropped=dropped,
+        failed=failed,
+    )
 
 
 def _item_surface(resolved, summarizer):
