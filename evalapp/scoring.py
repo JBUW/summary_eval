@@ -23,6 +23,8 @@ from .identities import (
 )
 from .metrics import MetricInput
 from .templates import load_template
+from .store import Store
+from .summarizers import select_summarizers
 
 _EMPTY_BRACKET = "[]"
 
@@ -231,6 +233,33 @@ def run_metrics_phase(
         excluded=excluded,
         dropped=dropped,
     )
+
+
+def score_metrics(
+    resolved, store_path, metrics_flag, judges_flag, datasets, selected,
+    summarizer_selection, console,
+):
+    """Pre-effect (resolve scorers + summarizers, drop infeasible reference
+    pairs with warns) runs BEFORE the store is opened; then the metrics
+    phase, store closed in a finally. Returns (scorers, phase result)."""
+    scorers = resolve_scorers(resolved, metrics_flag, judges_flag)
+    summarizers = select_summarizers(resolved, *summarizer_selection)
+    pairs = infeasible_pairs(resolved, scorers, datasets)
+    for kind, name, dataset_name in pairs:
+        console.warn(
+            f"{kind} '{name}' requires reference summaries; "
+            f"dataset '{dataset_name}' has none (pair skipped)"
+        )
+    infeasible = {(name, dataset_name) for _, name, dataset_name in pairs}
+    store = Store(store_path)
+    try:
+        result = run_metrics_phase(
+            store, resolved, scorers, infeasible, datasets, selected,
+            summarizers, console,
+        )
+    finally:
+        store.close()
+    return scorers, result
 
 
 def _item_surface(resolved, summarizer):
