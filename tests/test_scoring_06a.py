@@ -2,8 +2,14 @@
 import pytest
 
 from evalapp import metrics
+from evalapp.datasets import Dataset
 from evalapp.errors import SpecError
-from evalapp.scoring import Flag, ResolvedScorers, resolve_scorers
+from evalapp.scoring import (
+    Flag,
+    ResolvedScorers,
+    infeasible_pairs,
+    resolve_scorers,
+)
 
 ALL = metrics.registered_names()
 JUDGES = ("alpha", "beta")
@@ -184,3 +190,92 @@ def test_guards_run_before_unknown_name_errors():
     assert str(excinfo.value) == (
         "--no-judges is mutually exclusive with --judges"
     )
+
+
+# --- infeasible (scorer, dataset) pairs -----------------------------------
+
+REF_METRIC = "key_claim_completeness"
+PLAIN_METRIC = "conciseness_length_proxy"
+
+
+def _resolved_ref():
+    return {
+        "models": {},
+        "prompt_templates": {},
+        "summarizers": {},
+        "judges": {
+            "jref": {"requires_reference": True},
+            "jplain": {"requires_reference": False},
+        },
+        "defaults": {"metrics": None, "judges": None},
+    }
+
+
+def _dataset(name, reference_field):
+    return Dataset(
+        name,
+        {
+            "path": f"/d/{name}.jsonl",
+            "transcript_field": "text",
+            "reference_field": reference_field,
+            "entry_id_field": None,
+        },
+        [],
+    )
+
+
+def _datasets():
+    return {
+        "noref1": _dataset("noref1", None),
+        "withref": _dataset("withref", "ref"),
+        "noref2": _dataset("noref2", None),
+    }
+
+
+def test_infeasible_no_scorers_no_pairs():
+    scorers = ResolvedScorers(metrics=(), judges=(), notes=())
+    assert infeasible_pairs(_resolved_ref(), scorers, _datasets()) == []
+
+
+def test_infeasible_plain_metric_no_pairs():
+    scorers = ResolvedScorers(metrics=(PLAIN_METRIC,), judges=(), notes=())
+    assert infeasible_pairs(_resolved_ref(), scorers, _datasets()) == []
+
+
+def test_infeasible_reference_metric_over_dataset_without_reference():
+    scorers = ResolvedScorers(metrics=(REF_METRIC,), judges=(), notes=())
+    pairs = infeasible_pairs(_resolved_ref(), scorers, _datasets())
+    assert pairs == [
+        ("metric", REF_METRIC, "noref1"),
+        ("metric", REF_METRIC, "noref2"),
+    ]
+
+
+def test_infeasible_reference_metric_dataset_with_reference_feasible():
+    datasets = {"withref": _dataset("withref", "ref")}
+    scorers = ResolvedScorers(metrics=(REF_METRIC,), judges=(), notes=())
+    assert infeasible_pairs(_resolved_ref(), scorers, datasets) == []
+
+
+def test_infeasible_order_metrics_outer_datasets_inner():
+    scorers = ResolvedScorers(metrics=(REF_METRIC,), judges=(), notes=())
+    pairs = infeasible_pairs(_resolved_ref(), scorers, _datasets())
+    assert [ds for _, _, ds in pairs] == ["noref1", "noref2"]
+
+
+def test_infeasible_reference_judge_over_dataset_without_reference():
+    scorers = ResolvedScorers(metrics=(), judges=("jref", "jplain"), notes=())
+    assert infeasible_pairs(_resolved_ref(), scorers, _datasets()) == [
+        ("judge", "jref", "noref1"),
+        ("judge", "jref", "noref2"),
+    ]
+
+
+def test_infeasible_metrics_triples_before_judge_triples():
+    scorers = ResolvedScorers(metrics=(REF_METRIC,), judges=("jref",), notes=())
+    assert infeasible_pairs(_resolved_ref(), scorers, _datasets()) == [
+        ("metric", REF_METRIC, "noref1"),
+        ("metric", REF_METRIC, "noref2"),
+        ("judge", "jref", "noref1"),
+        ("judge", "jref", "noref2"),
+    ]

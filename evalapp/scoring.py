@@ -96,3 +96,24 @@ def _select_judge_tokens(tokens, resolved):
         else:
             raise SpecError(f"unknown judge '{token}' ({roster})")
     return tuple(selected)
+
+
+def infeasible_pairs(resolved, scorers, datasets):
+    """Ordered (kind, scorer_name, dataset_name) triples for the pairs a
+    reference-requiring scorer cannot run on (dataset has no
+    ``reference_field``): metrics first (resolved order), then judges
+    (resolved order), datasets in config order."""
+    pairs = []
+    for name in scorers.metrics:
+        if not metrics.get(name).requires_reference:
+            continue
+        for dataset in datasets.values():
+            if dataset.decl["reference_field"] is None:
+                pairs.append(("metric", name, dataset.name))
+    for name in scorers.judges:
+        if not resolved["judges"][name]["requires_reference"]:
+            continue
+        for dataset in datasets.values():
+            if dataset.decl["reference_field"] is None:
+                pairs.append(("judge", name, dataset.name))
+    return pairs
