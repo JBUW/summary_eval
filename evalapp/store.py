@@ -13,6 +13,7 @@ when a non-identity value differs from what is stored, and a pure
 re-insert leaves the row untouched.
 """
 import os
+import contextlib
 import sqlite3
 import time
 
@@ -247,6 +248,7 @@ class Store:
         self.path = path
         self.created = False
         self.readonly = readonly
+        self._unit_depth = 0
         if not readonly and not os.path.exists(path) and os.path.dirname(path):
             os.makedirs(os.path.dirname(path), exist_ok=True)
         self._db = self._connect(readonly)
@@ -327,10 +329,38 @@ class Store:
 
     def _execute(self, sql, params):
         try:
+            if self._unit_depth > 0:
+                return self._db.execute(sql, params)
             with self._db:
                 return self._db.execute(sql, params)
         except sqlite3.Error as exc:
             raise RuntimeFailure(f"store operation failed on {self.path}: {exc}") from exc
+
+    @contextlib.contextmanager
+    def transaction(self):
+        self._unit_depth += 1
+        try:
+            yield
+            self._db.commit()
+        except Exception:
+            self._db.rollback()
+            raise
+        finally:
+            self._unit_depth -= 1
+
+    def get_generation(self, sha):
+        row = self._execute(
+            "SELECT generation_text FROM generations WHERE generation_sha256 = ?",
+            (sha,),
+        ).fetchone()
+        return row[0] if row else None
+
+    def get_metric_evaluation(self, sha):
+        row = self._execute(
+            "SELECT value FROM metric_evaluations WHERE metric_evaluation_sha256 = ?",
+            (sha,),
+        ).fetchone()
+        return row[0] if row else None
 
     def _upsert(self, table, pk_column, pk_value, columns, values, stamps):
         all_columns = [pk_column, *columns, "updated_at"]

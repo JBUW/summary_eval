@@ -356,3 +356,79 @@ def test_open_readonly_unopenable_raises_cannot_open(tmp_path):
     with pytest.raises(SpecError) as excinfo:
         store.Store.open_readonly(path)
     assert str(excinfo.value) == expected
+
+
+def test_get_generation_returns_text_or_none(tmp_path):
+    path = str(tmp_path / "store.db")
+    opened = store.Store(path)
+    try:
+        assert opened.get_generation("nope") is None
+        _, _, _, generation_sha, _ = _seed_chain(opened)
+        assert opened.get_generation(generation_sha) == "gen text"
+        assert opened.get_generation("nope") is None
+    finally:
+        opened.close()
+
+
+def test_get_metric_evaluation_returns_value_or_none(tmp_path):
+    path = str(tmp_path / "store.db")
+    opened = store.Store(path)
+    try:
+        assert opened.get_metric_evaluation("nope") is None
+        _, _, _, generation_sha, reference_sha = _seed_chain(opened)
+        sha = opened.upsert_metric_evaluation("rouge_l", generation_sha, reference_sha, 0.42)
+        assert opened.get_metric_evaluation(sha) == 0.42
+        assert opened.get_metric_evaluation("nope") is None
+    finally:
+        opened.close()
+
+
+def test_transaction_commits_unit_on_exit(tmp_path):
+    path = str(tmp_path / "store.db")
+    opened = store.Store(path)
+    try:
+        transcript_sha, _, _, generation_sha, _ = _seed_chain(opened, reference=False)
+        with opened.transaction():
+            opened.upsert_reference_summary("ref text", transcript_sha, "d", None, 0)
+            opened.upsert_metric_evaluation("rouge_l", generation_sha, None, 0.5)
+        assert _row(path, "SELECT COUNT(*) FROM reference_summaries") == (1,)
+        assert _row(path, "SELECT COUNT(*) FROM metric_evaluations") == (1,)
+    finally:
+        opened.close()
+
+
+def test_nested_transaction_commits_on_outer_exit(tmp_path):
+    path = str(tmp_path / "store.db")
+    opened = store.Store(path)
+    try:
+        transcript_sha, _, _, _, _ = _seed_chain(opened, reference=False)
+        with opened.transaction():
+            with opened.transaction():
+                opened.upsert_reference_summary("ref text", transcript_sha, "d", None, 0)
+        assert _row(path, "SELECT COUNT(*) FROM reference_summaries") == (1,)
+    finally:
+        opened.close()
+
+
+def test_transaction_rolls_back_all_statements_on_error(tmp_path, monkeypatch):
+    path = str(tmp_path / "store.db")
+    opened = store.Store(path)
+    try:
+        transcript_sha, _, _, generation_sha, _ = _seed_chain(opened, reference=False)
+
+        def fail(*args, **kwargs):
+            raise RuntimeError("second statement failed")
+
+        monkeypatch.setattr(store.Store, "upsert_metric_evaluation", fail)
+        with pytest.raises(RuntimeError, match="second statement failed"):
+            with opened.transaction():
+                opened.upsert_reference_summary("ref text", transcript_sha, "d", None, 0)
+                opened.upsert_metric_evaluation("rouge_l", generation_sha, None, 0.5)
+        assert _row(path, "SELECT COUNT(*) FROM reference_summaries") == (0,)
+        assert _row(path, "SELECT COUNT(*) FROM metric_evaluations") == (0,)
+        # the connection is still usable after a rolled-back unit
+        with opened.transaction():
+            opened.upsert_reference_summary("ref text", transcript_sha, "d", None, 0)
+        assert _row(path, "SELECT COUNT(*) FROM reference_summaries") == (1,)
+    finally:
+        opened.close()
