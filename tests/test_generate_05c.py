@@ -10,7 +10,7 @@ import harness  # noqa: F401  (puts the repo root on sys.path)
 from evalapp.console import Console
 from evalapp.datasets import Dataset
 from evalapp.endpoint_client import EndpointClient
-from evalapp.errors import RuntimeFailure
+from evalapp.errors import FailFastAbort
 from evalapp.generate import generate_hook, run_generate
 from evalapp.identities import generation_id, model_id, template_id, transcript_id
 from evalapp.store import Store
@@ -127,6 +127,9 @@ class _FakeCycles:
     def ensure(self, model, model_args):
         self.ensured.append((model, model_args))
         return _FakeServer()
+
+    def log_tail(self, n=20):
+        return []
 
     def stop(self):
         self.stops += 1
@@ -448,7 +451,7 @@ def test_failure_is_complete_or_absent(tmp_path):
     console = _CapturingConsole()
     cycles = _FakeCycles()
     store = Store(str(tmp_path / "store.db"))
-    with pytest.raises(RuntimeFailure, match="HTTP 500"):
+    with pytest.raises(FailFastAbort):
         run_generate(
             store, console, resolved, datasets, selected,
             select_summarizers(resolved), _client(fake), cycles,
@@ -469,7 +472,11 @@ def test_failure_is_complete_or_absent(tmp_path):
         "metric_evaluations": 0,
     }
     assert cycles.stops == 1
-    assert console.lines == ["plan(generate): 1 summarizer, 2 items, 1 server cycle"]
+    assert console.lines == [
+        "plan(generate): 1 summarizer, 2 items, 1 server cycle",
+        "error: item ds#1 (summarizer 's'): HTTP 500 from model server",
+        "note: re-run to resume; 1 item already committed",
+    ]
     store.close()
 
 

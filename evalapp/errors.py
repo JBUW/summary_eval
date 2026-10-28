@@ -7,3 +7,7 @@ class SpecError(Exception):
 
 class RuntimeFailure(Exception):
     """Runtime failure, fail-fast (exit 1)."""
+
+
+class FailFastAbort(Exception):
+    """The fail-fast block is already printed; main maps this to exit 1."""

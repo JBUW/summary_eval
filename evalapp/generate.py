@@ -2,11 +2,11 @@
 deterministic item order → pre-scan skip → per-item atomic commit.
 
 Committed generations are terminal; a re-run pre-scans the store and
-skips committed items without any model call. Fail-fast wording and the
-resume note are ticket 05d; the score CLI wiring is ticket 08.
+skips committed items without any model call. The score CLI wiring is
+ticket 08.
 """
 from .endpoint_client import EndpointError
-from .errors import RuntimeFailure
+from .errors import FailFastAbort, RuntimeFailure
 from .identities import canonical_json, generation_id, model_id, template_id, transcript_id
 from .scoring import _read_reference
 from .templates import load_template
@@ -116,16 +116,32 @@ def run_generate(store, console, resolved, datasets, selected, summarizers, clie
     try:
         for summarizer, dataset, index, entry, surface, generation_sha in pending:
             model_bytes, model_sha, template, template_sha = surface
-            server = cycles.ensure(summarizer.model, summarizer.model_args)
             try:
+                server = cycles.ensure(summarizer.model, summarizer.model_args)
                 text = client.complete(
                     server.root,
                     summarizer.model,
                     _messages(template, entry["transcript"]),
                     gen_params=summarizer.gen_params,
                 )
-            except EndpointError as exc:
-                raise RuntimeFailure(str(exc)) from exc
+            except (EndpointError, RuntimeFailure) as exc:
+                detail = (
+                    f"{exc} from model server"
+                    if isinstance(exc, EndpointError)
+                    else str(exc)
+                )
+                console.error(
+                    f"item {dataset.name}#{index} "
+                    f"(summarizer '{summarizer.name or 'unnamed'}'): {detail}"
+                )
+                for line in cycles.log_tail(20):
+                    console.log(line)
+                total = skipped + committed
+                console.note(
+                    f"re-run to resume; {total} "
+                    f"{_plural(total, 'item', 'items')} already committed"
+                )
+                raise FailFastAbort()
             reference = None
             if dataset.decl["reference_field"] is not None:
                 reference = _read_reference(dataset.decl, index)

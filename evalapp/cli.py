@@ -12,7 +12,7 @@ from .config import (
 )
 from .console import Console
 from .datasets import load_dataset
-from .errors import RuntimeFailure, SpecError
+from .errors import FailFastAbort, RuntimeFailure, SpecError
 from .endpoint_client import EndpointClient
 from .generate import run_generate
 from .model_server import (
@@ -246,6 +246,8 @@ def main(argv):
     console = Console()
     try:
         return args.handler(args, console)
+    except FailFastAbort:
+        return 1
     except SpecError as exc:
         console.error(str(exc))
         return 2

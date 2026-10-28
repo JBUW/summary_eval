@@ -30,3 +30,6 @@ class Console:
 
     def note(self, message):
         self._emit(f"note: {message}", self._STAGE_NOTE)
+
+    def log(self, line):
+        self._emit(line, None)
