@@ -421,9 +421,13 @@ def test_generate_without_server_section_exits_2(tmp_path):
 def test_generate_command_not_found_exits_2(tmp_path):
     workspace = harness.standard_workspace(tmp_path)
     set_config_server_section(workspace, "/nonexistent/llama-server")
+    harness.add_summarizer_section(str(workspace / "config.json"))
     result = harness.run_cli(["generate", "--config", "config.json"], cwd=workspace)
     result.assert_exit(2)
-    assert result.lines == ["error: server: command not found: /nonexistent/llama-server"]
+    assert result.lines == [
+        "plan(generate): 1 summarizer, 24 items, 1 server cycle",
+        "error: server: command not found: /nonexistent/llama-server",
+    ]
 
 
 def test_generate_valid_section_prints_plan_lines(tmp_path):
@@ -431,20 +435,21 @@ def test_generate_valid_section_prints_plan_lines(tmp_path):
     set_config_server_section(workspace, FIXTURE)
     result = harness.run_cli(["generate", "--config", "config.json"], cwd=workspace)
     result.assert_exit(0)
-    assert result.with_prefix("plan(generate):") == [
-        "plan(generate): named 12 entries",
-        "plan(generate): unnamed 12 entries",
+    assert result.lines == [
+        "plan(generate): 0 summarizers, 0 items, 0 server cycles",
+        "done(generate): 0 committed, 0 skipped, 0 failed",
     ]
 
 
 def test_generate_busy_port_exits_2(tmp_path, monkeypatch):
     workspace = harness.standard_workspace(tmp_path)
     set_config_server_section(workspace, FIXTURE, port=8081)
+    harness.add_summarizer_section(str(workspace / "config.json"))
     monkeypatch.setattr(model_server, "port_is_free", raise_busy_port)
     result = harness.run_cli(["generate", "--config", "config.json"], cwd=workspace)
     result.assert_exit(2)
     assert result.lines == [
+        "plan(generate): 1 summarizer, 24 items, 1 server cycle",
         "error: port 8081 already bound "
-        "(a previous model server may still be running)"
+        "(a previous model server may still be running)",
     ]
-    assert result.with_prefix("plan(generate):") == []

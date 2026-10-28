@@ -9,6 +9,7 @@ import io
 import json
 import os
 import sys
+import re
 from dataclasses import dataclass
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -114,12 +115,12 @@ def standard_workspace(tmp_path, config_name="config.json"):
     return tmp_path
 
 
-def plan_count(result, command, dataset):
+def plan_items(result):
     for line in result.lines:
-        if line.startswith(f"plan({command}): {dataset} ") and line.endswith(
-            " entries"
-        ):
-            return int(line.split()[2])
+        if line.startswith("plan(generate): "):
+            match = re.search(r"(\d+) items?", line)
+            if match:
+                return int(match.group(1))
     return None
 
 
@@ -137,6 +138,27 @@ def add_server_section(path, port=8081):
         "port": port,
         "startup_timeout_s": 120,
     }
+    write_text(path, json.dumps(config, indent=2) + "\n")
+    return path
+
+
+def add_summarizer_section(path):
+    """Add one model, one template, and one summarizer 's' to the config.
+
+    Writes model.bin (binary) and template.json next to the config file.
+    """
+    with open(path, "r", encoding="utf-8") as handle:
+        config = json.load(handle)
+    directory = os.path.dirname(path) or "."
+    with open(os.path.join(directory, "model.bin"), "wb") as handle:
+        handle.write(b"model-bytes")
+    write_text(
+        os.path.join(directory, "template.json"),
+        json.dumps({"system_content": "sys", "user_template": "usr"}) + "\n",
+    )
+    config["models"] = {"m": {"path": "model.bin"}}
+    config["prompt_templates"] = {"t": {"path": "template.json"}}
+    config["summarizers"] = {"s": {"model": "m", "prompt_template": "t"}}
     write_text(path, json.dumps(config, indent=2) + "\n")
     return path
 

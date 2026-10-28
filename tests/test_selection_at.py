@@ -12,17 +12,19 @@ def workspace_with_ids(tmp_path, ids):
         store="store.db",
     )
     harness.add_server_section(str(tmp_path / "config.json"))
+    harness.add_summarizer_section(str(tmp_path / "config.json"))
     return tmp_path
 
 
 def test_at_spec_selects_one_entry(tmp_path):
     workspace = harness.standard_workspace(tmp_path)
     harness.add_server_section(str(workspace / "config.json"))
+    harness.add_summarizer_section(str(workspace / "config.json"))
     result = harness.run_cli(
         ["generate", "--select", "named", "@id-03"], cwd=workspace
     )
-    result.assert_exit(0)
-    assert harness.plan_count(result, "generate", "named") == 1
+    result.assert_exit(1)
+    assert harness.plan_items(result) == 1
 
 
 def test_double_at_names_literal_at_id(tmp_path):
@@ -30,8 +32,8 @@ def test_double_at_names_literal_at_id(tmp_path):
     result = harness.run_cli(
         ["generate", "--select", "named", "@@x"], cwd=workspace
     )
-    result.assert_exit(0)
-    assert harness.plan_count(result, "generate", "named") == 1
+    result.assert_exit(1)
+    assert harness.plan_items(result) == 1
 
 
 def test_at_spec_rejected_in_unnamed_dataset(tmp_path):
@@ -59,5 +61,5 @@ def test_at_spec_id_may_contain_comma(tmp_path):
     result = harness.run_cli(
         ["generate", "--select", "named", "@a,b"], cwd=workspace
     )
-    result.assert_exit(0)
-    assert harness.plan_count(result, "generate", "named") == 1
+    result.assert_exit(1)
+    assert harness.plan_items(result) == 1

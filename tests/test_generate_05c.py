@@ -471,3 +471,40 @@ def test_failure_is_complete_or_absent(tmp_path):
     assert cycles.stops == 1
     assert console.lines == ["plan(generate): 1 summarizer, 2 items, 1 server cycle"]
     store.close()
+
+
+def test_cli_all_committed_no_spawn(tmp_path):
+    workspace = harness.standard_workspace(tmp_path)
+    harness.add_server_section(str(workspace / "config.json"))
+    harness.add_summarizer_section(str(workspace / "config.json"))
+    store = Store(str(workspace / "store.db"))
+    for index in range(12):
+        transcript = f"transcript {index}"
+        transcript_sha = store.upsert_transcript(
+            transcript, "named", f"id-{index:02d}", index
+        )
+        model_sha = store.upsert_model(b"model-bytes", "m", "model.bin")
+        template_sha = store.upsert_template("sys", "usr", "t")
+        store.upsert_generation(
+            transcript_sha, model_sha, {}, template_sha, {}, f"gen:{index}"
+        )
+    store.close()
+    result = harness.run_cli(
+        ["generate", "--select", "*", "--summarizer", "s"], cwd=workspace
+    )
+    result.assert_exit(0)
+    assert result.lines == [
+        "plan(generate): 1 summarizer, 24 items, 1 server cycle",
+        "note: all 24 items already committed; server not started",
+        "done(generate): 0 committed, 24 skipped, 0 failed",
+    ]
+
+
+def test_cli_absent_server_section(tmp_path):
+    workspace = harness.standard_workspace(tmp_path)
+    harness.add_summarizer_section(str(workspace / "config.json"))
+    result = harness.run_cli(
+        ["generate", "--select", "named", "#0", "--summarizer", "s"], cwd=workspace
+    )
+    result.assert_exit(2)
+    assert "error: no server section in config (no fallback launch)" in result.lines

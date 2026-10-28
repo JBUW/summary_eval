@@ -100,6 +100,7 @@ def test_json_extension_is_one_object_per_line(tmp_path):
     harness.write_jsonl(str(tmp_path / "ds.json"), [{"text": "a"}, {"text": "b"}])
     workspace = make_workspace(tmp_path, {"path": "ds.json", "transcript_field": "text"})
     harness.add_server_section(str(tmp_path / "config.json"))
+    harness.add_summarizer_section(str(tmp_path / "config.json"))
     result = generate(workspace)
-    result.assert_exit(0)
-    assert harness.plan_count(result, "generate", "ds") == 2
+    result.assert_exit(1)
+    assert harness.plan_items(result) == 2

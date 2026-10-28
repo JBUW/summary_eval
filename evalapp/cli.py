@@ -13,13 +13,15 @@ from .config import (
 from .console import Console
 from .datasets import load_dataset
 from .errors import RuntimeFailure, SpecError
+from .endpoint_client import EndpointClient
+from .generate import run_generate
 from .model_server import (
-    distinct_model_pairs,
     effective_server_spec,
+    ServerCycles,
     port_is_free,  # re-exported for check_static
-    prevalidate_launch,
 )
 from .selection import resolve_selection
+from .summarizers import select_summarizers
 from .store import Store
 
 SUBCOMMANDS = ("check", "generate", "score", "sweep", "report", "clear")
@@ -75,6 +77,12 @@ def build_parser():
         if command == "check":
             sub.add_argument("--probe-judges", action="store_true", default=False)
             sub.add_argument("--create-store", action="store_true", default=False)
+        if command == "generate":
+            sub.add_argument("--summarizer", nargs="+", action="append", default=None)
+            sub.add_argument("--model", nargs="+", action="append", default=None)
+            sub.add_argument(
+                "--prompt-template", nargs="+", action="append", default=None
+            )
         sub.set_defaults(handler=_HANDLERS[command])
     return parser
 
@@ -95,6 +103,12 @@ def _parse_json_object(value, flag):
     if not isinstance(parsed, dict):
         raise SpecError(f"{flag} must be a JSON object")
     return parsed
+
+
+def _tokens(value):
+    if value is None:
+        return None
+    return tuple(token for group in value for token in group)
 
 
 def _run_command(command, args, console):
@@ -125,6 +139,12 @@ def _generate(args, console):
         for message in errors:
             console.error(message)
         return 2
+    summarizers = select_summarizers(
+        resolved,
+        _tokens(args.summarizer),
+        _tokens(args.model),
+        _tokens(args.prompt_template),
+    )
     args_map = (
         _parse_json_object(args.server_args, "--server-args")
         if args.server_args is not None
@@ -143,12 +163,20 @@ def _generate(args, console):
         port=args.server_port,
         startup_timeout_s=args.server_startup_timeout,
     )
-    pairs = distinct_model_pairs(resolved)
-    prevalidate_launch(spec, pairs, resolved["models"])
-    for name, decl in declared.items():
-        indices = scope[name]
-        if indices:
-            console.plan("generate", f"{name} {len(indices)} entries")
+    client = EndpointClient()
+    cycles = ServerCycles(
+        spec,
+        {name: model["path"] for name, model in resolved["models"].items()},
+        client,
+        console,
+    )
+    store = Store(effective_store_path(config, args.store))
+    try:
+        run_generate(
+            store, console, resolved, datasets, scope, summarizers, client, cycles
+        )
+    finally:
+        store.close()
     return 0
 
 
