@@ -1,10 +1,11 @@
-"""Scorer resolution and the metrics phase for score (docs/commands.md,
-§score).
+"""Scorer resolution, the metrics and judges phases, and the full score
+run (docs/commands.md, §score).
 
 The CLI hands this module raw flag state (Flag); resolution owns the
 precedence rules, the ``[]`` no-op token, and the exit-2 SpecError wording.
-Note bodies are returned for the caller to emit as ``console.note`` AFTER its
-own ``plan:`` line (console stages are monotonic).
+score() emits everything itself: pre-effect warns/notes, the plan(score)
+line, mid-run phase warns (legal after plan lines), the generation and
+no-scorers notes, and done(score).
 """
 import csv
 import json
@@ -475,17 +476,34 @@ def run_judges_phase(
     )
 
 
+def _plural(count, word):
+    return f"{count} {word}{'s' if count != 1 else ''}"
+
+
+def _has_scorable_pair(scorers, infeasible, selected):
+    """Whether any (scorer, in-scope dataset) pair is feasible; in-scope
+    means at least one selected entry (selection-scoped)."""
+    in_scope = [name for name, indices in selected.items() if indices]
+    return any(
+        (name, dataset_name) not in infeasible
+        for name in (*scorers.metrics, *scorers.judges)
+        for dataset_name in in_scope
+    )
+
+
 def score(
     resolved, store_path, metrics_flag, judges_flag, datasets, selected,
     summarizer_selection, console, client, judge_call, generate=None,
 ):
-    """Full score run: pre-effect (scorers, summarizers, judge credential
-    preflight, infeasible warns) before the store, then plan (resume
-    pre-scan) BEFORE generate, then the
-    generate hook if any (a stage-1 RuntimeFailure propagates before any
-    scoring), then the metrics phase (a failure propagates before any judge
-    call), then the judges phase; the store closes in a finally. Returns
-    (scorers, plan, metrics_result, judges_result)."""
+    """Full score run; prints everything itself. Pre-effect (scorers,
+    summarizers, judge credential preflight, infeasible warns, the
+    no-scorable-pairs note) before the store, then the plan (resume
+    pre-scan) and the plan(score) line BEFORE the generate hook if any (a
+    stage-1 RuntimeFailure propagates before any scoring), then the metrics
+    phase (a failure propagates before any judge call), then the judges
+    phase; the store closes in a finally; the generation and no-scorers
+    notes and done(score) print after close. Returns (scorers, plan,
+    metrics_result, judges_result)."""
     scorers = resolve_scorers(resolved, metrics_flag, judges_flag)
     summarizers = select_summarizers(resolved, *summarizer_selection)
     _credential_preflight(resolved, judges_flag)
@@ -496,6 +514,10 @@ def score(
             f"dataset '{dataset_name}' has none (pair skipped)"
         )
     infeasible = {(name, dataset_name) for _, name, dataset_name in pairs}
+    if (scorers.metrics or scorers.judges) and not _has_scorable_pair(
+        scorers, infeasible, selected,
+    ):
+        console.note("no scorable pairs in scope; nothing scored")
     store = Store(store_path)
     try:
         plan = score_plan(
@@ -504,6 +526,18 @@ def score(
         )
         if generate is not None:
             generate(store, console)
+        scorer_text = (
+            "0 metric(s), 0 judge(s)"
+            if plan.metrics == 0 and plan.judges == 0
+            else f"{_plural(plan.metrics, 'metric')}, "
+            f"{_plural(plan.judges, 'judge')}"
+        )
+        console.plan(
+            "score",
+            f"{scorer_text} | {_plural(plan.items, 'item')} | "
+            f"{plan.to_run} to run, {plan.already_scored} already scored | "
+            f"{plan.infeasible_pairs} infeasible",
+        )
         metrics_result = run_metrics_phase(
             store, resolved, scorers, infeasible, datasets, selected,
             summarizers, console,
@@ -514,6 +548,26 @@ def score(
         )
     finally:
         store.close()
+    if not (scorers.metrics or scorers.judges):
+        console.note("no metrics or judges selected; nothing scored")
+    elif generate is None and plan.items > 0:
+        missing = metrics_result.missing_generation
+        total = metrics_result.items
+        if missing == total:
+            console.note(
+                "no committed generations in scope; run 'generate' first"
+            )
+        elif missing > 0:
+            console.note(
+                f"{missing} selected items have no committed generation; "
+                f"run 'generate' first"
+            )
+    console.done(
+        "score",
+        f"{metrics_result.committed + judges_result.committed} committed, "
+        f"{metrics_result.dropped + judges_result.dropped} dropped, "
+        f"{judges_result.failed} failed",
+    )
     return scorers, plan, metrics_result, judges_result
 
 

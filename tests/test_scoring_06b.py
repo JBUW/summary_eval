@@ -99,9 +99,21 @@ def _seed_judge(store, entry, name="j"):
 class _RecordingConsole:
     def __init__(self):
         self.warnings = []
+        self.plans = []
+        self.notes = []
+        self.dones = []
 
     def warn(self, message):
         self.warnings.append(message)
+
+    def plan(self, command, message):
+        self.plans.append((command, message))
+
+    def note(self, message):
+        self.notes.append(message)
+
+    def done(self, command, message):
+        self.dones.append((command, message))
 
 
 class _JudgeFake:

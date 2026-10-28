@@ -230,7 +230,7 @@ def _score(args, console):
             client, console
         )
         hook = generate_hook(resolved, datasets, scope, summarizers, client, cycles)
-    metrics_flag = (Flag() if args.metrics is None
+    metrics_flag = (Flag(no=args.no_metrics) if args.metrics is None
                     else Flag(value=_tokens(args.metrics), no=args.no_metrics))
     if args.judges is None:
         judges_flag = Flag(no=args.no_judges)
