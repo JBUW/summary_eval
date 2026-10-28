@@ -18,7 +18,7 @@ from evalapp.endpoint_client import (
 )
 from evalapp.errors import RuntimeFailure
 from evalapp.identities import generation_id, judge_evaluation_id
-from evalapp.judge_call import render_judge_messages
+from evalapp.judge_call import judge_call, render_judge_messages
 from evalapp.scoring import JudgePhaseResult, ResolvedScorers, run_judges_phase
 from evalapp.store import Store
 from evalapp.summarizers import select_summarizers
@@ -211,3 +211,46 @@ def test_render_substituted_values_are_not_rescanned():
     messages = render_judge_messages(entry, "see {summary} now", "G-0", None)
 
     assert messages[1]["content"] == "T: see {summary} now"
+
+
+def test_judge_call_clean_parse_returns_all_qualities():
+    fake = _FakeTransport()
+    fake.enqueue(
+        (200, _completion(
+            "factual_correctness: 1.0\ncompleteness: 0.5\nconciseness: 0.25"
+        ))
+    )
+    entry = _judge_entry(gen_params={"temperature": 0.2})
+
+    scores = judge_call(_client(fake), "j", entry, "T-0", "G-0", None)
+
+    assert scores == {
+        "factual_correctness": 1.0,
+        "completeness": 0.5,
+        "conciseness": 0.25,
+    }
+    request = fake.requests[0]
+    assert request["method"] == "POST"
+    assert request["url"] == "https://e/v1/chat/completions"
+    assert "Authorization" not in request["headers"]
+    payload = json.loads(request["body"])
+    assert payload["model"] == "pin"
+    assert payload["messages"] == [
+        {"role": "system", "content": "sys"},
+        {
+            "role": "user",
+            "content": "Transcript:\nT-0\n\nSummary under evaluation:\nG-0",
+        },
+    ]
+    assert payload["temperature"] == 0.2
+
+
+def test_judge_call_rejected_parse_returns_none():
+    fake = _FakeTransport()
+    fake.enqueue((200, _completion("I cannot evaluate these qualities.")))
+
+    scores = judge_call(
+        _client(fake), "j", _judge_entry(), "T-0", "G-0", None
+    )
+
+    assert scores is None

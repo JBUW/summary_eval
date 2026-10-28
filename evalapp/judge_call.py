@@ -11,7 +11,9 @@ wraps it with the item and the judge (fail-fast, exit 1).
 """
 import re
 
-from .judge_parser import parse_judge_response
+from .endpoint_client import EndpointError
+from .errors import RuntimeFailure
+from .judge_parser import QUALITIES, parse_judge_response
 
 _PLACEHOLDER = re.compile(r"\{(\w+)\}")
 
@@ -63,3 +65,35 @@ def render_judge_messages(judge_entry, transcript_text, generation_text, referen
         }
     )
     return messages
+
+
+def judge_call(
+    client, judge_name, judge_entry, transcript_text, generation_text, reference
+):
+    """One judge completion for one (item, judge) unit (the 06b seam).
+
+    Returns one nullable value per v1 quality (never cross-averaged, no
+    composite) after the raw response passes through the ticket-07 parse
+    seam; None when the parse seam rejects the response (the judges
+    phase warns, commits no row, and continues). Any EndpointError
+    (transport/HTTP failure, timeout, empty completion) becomes a
+    RuntimeFailure carrying the transport detail only; the judges phase
+    wraps it with the item and the judge.
+    """
+    messages = render_judge_messages(
+        judge_entry, transcript_text, generation_text, reference
+    )
+    try:
+        raw = client.complete(
+            judge_entry["endpoint"],
+            judge_entry["model_name"],
+            messages,
+            gen_params=judge_entry["gen_params"],
+            api_key_env=judge_entry["api_key_env"],
+        )
+    except EndpointError as exc:
+        raise RuntimeFailure(str(exc)) from exc
+    parsed = parse_judge_response(raw)
+    if parsed.rejected:
+        return None
+    return {quality: parsed.values.get(quality) for quality in QUALITIES}
