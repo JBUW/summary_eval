@@ -96,6 +96,26 @@ def resolve_scorers(resolved, metrics_flag, judges_flag):
     return ResolvedScorers(metrics=metric_names, judges=judges, notes=tuple(notes))
 
 
+def resolve_sweep_scorers(resolved, all_metrics, all_judges):
+    if all_metrics:
+        metric_tokens = ["*"]
+    else:
+        default = resolved["defaults"]["metrics"]
+        metric_tokens = (
+            ["*"] if default is None else _without_empty_bracket(list(default))
+        )
+    metric_names = tuple(spec.name for spec in metrics.resolve(metric_tokens))
+    if all_judges:
+        judge_tokens = ["*"]
+    else:
+        default = resolved["defaults"]["judges"]
+        judge_tokens = (
+            ["*"] if default is None else _without_empty_bracket(list(default))
+        )
+    judges = _select_judge_tokens(judge_tokens, resolved)
+    return ResolvedScorers(metrics=metric_names, judges=judges, notes=())
+
+
 def _credential_preflight(resolved, judges_flag):
     if judges_flag.value is None or judges_flag.value == "bare":
         return
@@ -108,6 +128,20 @@ def _credential_preflight(resolved, judges_flag):
                 f"judge '{token}': environment variable "
                 f"'{variable}' is unset or empty"
             )
+
+
+def _sweep_credential_preflight(resolved, console, judges):
+    kept = []
+    for name in judges:
+        variable = resolved["judges"][name]["api_key_env"]
+        if isinstance(variable, str) and os.environ.get(variable) in (None, ""):
+            console.warn(
+                f"judge '{name}': environment variable '{variable}' "
+                "is unset or empty (judge skipped)"
+            )
+            continue
+        kept.append(name)
+    return tuple(kept)
 
 
 def _without_empty_bracket(tokens):
