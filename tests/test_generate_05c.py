@@ -286,3 +286,79 @@ def test_generate_hook_wraps_run_generate(tmp_path):
         "plan(generate): 1 summarizer, 3 items, 1 server cycle",
         "done(generate): 3 committed, 0 skipped, 0 failed",
     ]
+
+
+def test_prescan_skips_committed_item(tmp_path):
+    model_path, template_path = _workspace(tmp_path)
+    resolved = _resolved(model_path, template_path)
+    datasets = {"ds": _dataset()}
+    selected = {"ds": [0, 1, 2]}
+    store = Store(str(tmp_path / "store.db"))
+    _commit_generation(store, "t0", 0)
+    fake = _FakeTransport()
+    fake.enqueue((200, _completion("g1")), (200, _completion("g2")))
+    console = _CapturingConsole()
+    cycles = _FakeCycles()
+    run_generate(
+        store, console, resolved, datasets, selected,
+        select_summarizers(resolved), _client(fake), cycles,
+    )
+    assert [
+        json.loads(req["body"])["messages"][-1]["content"] for req in fake.requests
+    ] == ["usrt1", "usrt2"]
+    assert cycles.ensured == [("m", {})] * 2
+    assert cycles.stops == 1
+    assert console.lines == [
+        "plan(generate): 1 summarizer, 3 items, 1 server cycle",
+        "done(generate): 2 committed, 1 skipped, 0 failed",
+    ]
+    store.close()
+
+
+def test_all_committed_never_starts_server(tmp_path):
+    model_path, template_path = _workspace(tmp_path)
+    resolved = _resolved(model_path, template_path)
+    datasets = {"ds": _dataset()}
+    selected = {"ds": [0, 1, 2]}
+    store = Store(str(tmp_path / "store.db"))
+    for index in range(3):
+        _commit_generation(store, f"t{index}", index)
+    fake = _FakeTransport()
+    console = _CapturingConsole()
+    cycles = _FakeCycles()
+    run_generate(
+        store, console, resolved, datasets, selected,
+        select_summarizers(resolved), _client(fake), cycles,
+    )
+    assert fake.requests == []
+    assert cycles.ensured == []
+    assert cycles.stops == 0
+    assert console.lines == [
+        "plan(generate): 1 summarizer, 3 items, 1 server cycle",
+        "note: all 3 items already committed; server not started",
+        "done(generate): 0 committed, 3 skipped, 0 failed",
+    ]
+    store.close()
+
+
+def test_zero_items_plan_and_done_only(tmp_path):
+    model_path, template_path = _workspace(tmp_path)
+    resolved = _resolved(model_path, template_path)
+    datasets = {"ds": _dataset()}
+    selected = {"ds": []}
+    fake = _FakeTransport()
+    console = _CapturingConsole()
+    cycles = _FakeCycles()
+    store = Store(str(tmp_path / "store.db"))
+    run_generate(
+        store, console, resolved, datasets, selected,
+        select_summarizers(resolved), _client(fake), cycles,
+    )
+    assert fake.requests == []
+    assert cycles.ensured == []
+    assert cycles.stops == 0
+    assert console.lines == [
+        "plan(generate): 1 summarizer, 0 items, 1 server cycle",
+        "done(generate): 0 committed, 0 skipped, 0 failed",
+    ]
+    store.close()
