@@ -91,6 +91,20 @@ def build_parser():
             sub.add_argument("--no-metrics", action="store_true", default=False)
             sub.add_argument("--no-judges", action="store_true", default=False)
             sub.add_argument("--generate", action="store_true", default=False)
+        if command == "sweep":
+            for flag in (
+                "--select",
+                "--summarizer",
+                "--model",
+                "--prompt-template",
+                "--metrics",
+                "--judges",
+            ):
+                sub.add_argument(flag, nargs="*", action="append", default=None)
+            sub.add_argument("--generate", action="store_true", default=False)
+            sub.add_argument("--all-metrics", action="store_true", default=False)
+            sub.add_argument("--all-judges", action="store_true", default=False)
+            sub.add_argument("--all", action="store_true", default=False)
         sub.set_defaults(handler=_HANDLERS[command])
     return parser
 
@@ -272,7 +286,23 @@ def _clear(args, console):
     return 0
 
 
+_SWEEP_FORBIDDEN_ATTRS = (
+    "select",
+    "summarizer",
+    "model",
+    "prompt_template",
+    "metrics",
+    "judges",
+    "generate",
+)
+
+
 def _sweep(args, console):
+    if any(getattr(args, name) for name in _SWEEP_FORBIDDEN_ATTRS):
+        raise SpecError(
+            "'sweep' takes no selection or scorer flags (it is exhaustive); "
+            "use 'score --generate' to narrow"
+        )
     config = _load(args, console)
     declared = validate_datasets(config)
     console.plan("sweep", f"{len(declared)} datasets")
