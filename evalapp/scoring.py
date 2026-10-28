@@ -525,23 +525,9 @@ def _has_scorable_pair(scorers, infeasible, selected):
     )
 
 
-def score(
-    resolved, store_path, metrics_flag, judges_flag, datasets, selected,
-    summarizer_selection, console, client, judge_call, generate=None,
-):
-    """Full score run; prints everything itself. Pre-effect (scorers,
-    summarizers, judge credential preflight, infeasible warns, the
-    no-scorable-pairs note) before the store, then the plan (resume
-    pre-scan), the plan(generate) line when a generate hook is given,
-    and the plan(score) line -- all BEFORE the hook (a stage-1 failure
-    propagates before any scoring), then the metrics phase (a failure
-    propagates before any judge call), then the judges phase; the store
-    closes in a finally; the generation and no-scorers notes and
-    done(score) print after close. Returns (scorers, plan,
-    metrics_result, judges_result)."""
-    scorers = resolve_scorers(resolved, metrics_flag, judges_flag)
-    summarizers = select_summarizers(resolved, *summarizer_selection)
-    _credential_preflight(resolved, judges_flag)
+def _pre_effect(resolved, scorers, datasets, selected, console):
+    """Shared pre-store effect: the infeasible-pair warns, then the
+    no-scorable-pairs note. Returns the infeasible (name, dataset) set."""
     pairs = infeasible_pairs(resolved, scorers, datasets)
     for kind, name, dataset_name in pairs:
         console.warn(
@@ -553,6 +539,17 @@ def score(
         scorers, infeasible, selected,
     ):
         console.note("no scorable pairs in scope; nothing scored")
+    return infeasible
+
+
+def _run_score(
+    store_path, resolved, scorers, infeasible, datasets, selected,
+    summarizers, console, client, judge_call, generate,
+):
+    """Store-scoped run: the plan lines (generate, then score), the
+    optional generate hook, the metrics phase, and the judges phase; the
+    store closes in a finally. The generation, no-scorers, and
+    done(score) lines print after close."""
     store = Store(store_path)
     try:
         plan = score_plan(
@@ -607,6 +604,55 @@ def score(
         f"{metrics_result.committed + judges_result.committed} committed, "
         f"{metrics_result.dropped + judges_result.dropped} dropped, "
         f"{judges_result.failed} failed",
+    )
+    return plan, metrics_result, judges_result
+
+
+def score(
+    resolved, store_path, metrics_flag, judges_flag, datasets, selected,
+    summarizer_selection, console, client, judge_call, generate=None,
+):
+    """Full score run; prints everything itself. Pre-effect (scorers,
+    summarizers, judge credential preflight, infeasible warns, the
+    no-scorable-pairs note) before the store, then the plan (resume
+    pre-scan), the plan(generate) line when a generate hook is given,
+    and the plan(score) line -- all BEFORE the hook (a stage-1 failure
+    propagates before any scoring), then the metrics phase (a failure
+    propagates before any judge call), then the judges phase; the store
+    closes in a finally; the generation and no-scorers notes and
+    done(score) print after close. Returns (scorers, plan,
+    metrics_result, judges_result)."""
+    scorers = resolve_scorers(resolved, metrics_flag, judges_flag)
+    summarizers = select_summarizers(resolved, *summarizer_selection)
+    _credential_preflight(resolved, judges_flag)
+    infeasible = _pre_effect(resolved, scorers, datasets, selected, console)
+    plan, metrics_result, judges_result = _run_score(
+        store_path, resolved, scorers, infeasible, datasets, selected,
+        summarizers, console, client, judge_call, generate,
+    )
+    return scorers, plan, metrics_result, judges_result
+
+
+def sweep(
+    resolved, store_path, all_metrics, all_judges, datasets, selected,
+    console, client, judge_call, generate,
+):
+    """Full sweep run (docs/commands.md, §sweep): the exhaustive scorer
+    set (widen flags or defaults), the judge credential preflight (drop
+    with a warn, never raise), the shared pre-effect, then the shared
+    store-scoped run with the generate hook (sweep always generates).
+    Prints everything itself. Returns (scorers, plan, metrics_result,
+    judges_result)."""
+    scorers = resolve_sweep_scorers(resolved, all_metrics, all_judges)
+    kept = _sweep_credential_preflight(resolved, console, scorers.judges)
+    scorers = ResolvedScorers(
+        metrics=scorers.metrics, judges=kept, notes=scorers.notes
+    )
+    summarizers = select_summarizers(resolved)
+    infeasible = _pre_effect(resolved, scorers, datasets, selected, console)
+    plan, metrics_result, judges_result = _run_score(
+        store_path, resolved, scorers, infeasible, datasets, selected,
+        summarizers, console, client, judge_call, generate,
     )
     return scorers, plan, metrics_result, judges_result
 

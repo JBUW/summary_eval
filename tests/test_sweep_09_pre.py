@@ -67,6 +67,7 @@ def test_generate_rejected(tmp_path):
 
 def test_widen_flags_accepted(tmp_path):
     harness.standard_workspace(tmp_path)
+    harness.add_server_section(str(tmp_path / "config.json"))
     for argv in (
         ["sweep", "--all-metrics"],
         ["sweep", "--all-judges"],

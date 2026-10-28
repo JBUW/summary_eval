@@ -21,7 +21,7 @@ from .model_server import (
     ServerCycles,
     port_is_free,  # re-exported for check_static
 )
-from .scoring import Flag, score
+from .scoring import Flag, score, sweep
 from .selection import resolve_selection
 from .summarizers import select_summarizers
 from .store import Store
@@ -305,7 +305,37 @@ def _sweep(args, console):
         )
     config = _load(args, console)
     declared = validate_datasets(config)
-    console.plan("sweep", f"{len(declared)} datasets")
+    datasets = {name: load_dataset(name, decl) for name, decl in declared.items()}
+    selected = {name: list(range(len(ds.entries))) for name, ds in datasets.items()}
+    if not any(selected.values()):
+        console.note("no entries in scope; nothing to do")
+        return 0
+    errors, resolved = validate_config(config, console)
+    if errors:
+        for message in errors:
+            console.error(message)
+        return 2
+    client = EndpointClient()
+    summarizers = select_summarizers(resolved)
+    args_map = (_parse_json_object(args.server_args, "--server-args")
+               if args.server_args is not None else None)
+    env_map = (_parse_json_object(args.server_env, "--server-env")
+               if args.server_env is not None else None)
+    spec = effective_server_spec(config, command=args.server_command,
+                                 args_map=args_map, env_map=env_map,
+                                 port=args.server_port,
+                                 startup_timeout_s=args.server_startup_timeout)
+    cycles = ServerCycles(
+        spec, {name: model["path"] for name, model in resolved["models"].items()},
+        client, console
+    )
+    hook = generate_hook(
+        resolved, datasets, selected, summarizers, client, cycles,
+        print_plan=False,
+    )
+    sweep(resolved, effective_store_path(config, args.store),
+          args.all_metrics or args.all, args.all_judges or args.all,
+          datasets, selected, console, client, judge_call, generate=hook)
     return 0
 
 
