@@ -175,3 +175,97 @@ score --server-port 8081
 4. Resume: re-run skips committed (item, scorer) units, fake client sees no calls on them, remainder only; `to_run`/`already scored` counts correct.
 5. Integration via fixture `--serve` (ports ≥18090, one port per server run; 05b owns 18081/9090/7070/8081, 05d used 18090 — pick fresh, e.g. 18100+; TIME_WAIT ⇒ distinct ports per test): score smoke through the real endpoint (plan/done lines byte-exact, exit 0, store rows: metric_evaluations/judge_evaluations/reference_summaries), `score --generate` two-stage end-to-end, judge-reject (failed count, exit 0), judge-500 fail-fast exit 1 naming item+judge (use `--fail-after`), resume-after-partial-failure (re-run on a different port, no calls on committed units).
 6. Close 08: all **12** boxes in `issues/08-score.md` + `- 2026-10-28 — implemented: …` under `## Comments` (mention final test count); map Notes → `Done: 01–08, 06a–06c, 07. Open: 09, 10, 11.`; commit `docs(scratch): ticket 08 — close`.
+
+### Ticket 09 (settled 2026-10-28)
+
+Scope: `sweep` — exact `score` semantics including implied generation, over ALL
+configured summarizers x all datasets x the resolved scorer set; no selection or
+scorer flags (any of the seven families => exit 2 with the byte-exact docs error);
+widen-only `--all-metrics/--all-judges/--all`; exit classes 0/1/2 inherited from `score`.
+
+**`evalapp/scoring.py`:**
+
+- New `resolve_sweep_scorers(resolved, all_metrics, all_judges) -> ResolvedScorers(notes=())`:
+  metrics: `all_metrics` => `["*"]`; else `defaults["metrics"]` None => `["*"]` (all
+  code-registered), present => `_without_empty_bracket(default)` (`[]` => zero, no
+  fallback); then `metrics.resolve(tokens)`. Judges: `all_judges` => `["*"]`; else
+  default_judges None => `["*"]` (all configured), present =>
+  `_without_empty_bracket(default)` (`[]` => zero); then `_select_judge_tokens`
+  (unknown name still SpecError). Widen flags force the full set independently =>
+  composable/idempotent for free.
+- New `_sweep_credential_preflight(resolved, console, judges)`: per name,
+  `variable = resolved["judges"][name]["api_key_env"]`; if `isinstance(variable, str)
+  and os.environ.get(variable) in (None, "")` => `warn: judge '<name>': environment
+  variable '<var>' is unset or empty (judge skipped)` + drop; else keep; returns the
+  kept tuple. Runs BEFORE the infeasible warns (score's preflight position); the plan
+  counts only kept judges. (Contrast score: explicit `--judges X` unset key => exit 2.)
+- Refactor `score()` tail into shared privates (score regression-covered by the
+  existing suite, behavior byte-identical):
+  - `_pre_effect(resolved, scorers, datasets, selected, console) -> infeasible set`:
+    the infeasible pair warns, then the `no scorable pairs in scope; nothing scored`
+    note (order as in score today).
+  - `_run_score(store_path, resolved, scorers, infeasible, datasets, selected,
+    summarizers, console, client, judge_call, generate) -> (plan, metrics_result,
+    judges_result)`: Store open, `score_plan`, `plan(generate)` when hook,
+    `plan(score)`, the hook, `run_metrics_phase`, `run_judges_phase`, close in
+    finally, the `no metrics or judges selected; nothing scored` note when zero
+    scorers, the missing-generation notes only when `generate is None`,
+    `done(score)`.
+- New `sweep(resolved, store_path, all_metrics, all_judges, datasets, selected,
+  console, client, judge_call, generate)`: `resolve_sweep_scorers` =>
+  `_sweep_credential_preflight` (warn+drop) => `select_summarizers(resolved)`
+  (all-None => all configured, config order) => `_pre_effect` => `_run_score`. The
+  hook is ALWAYS present (generation implied).
+
+**`evalapp/cli.py`:**
+
+- `_sweep` (replaces the stub): guard FIRST, pre-config: forbidden attrs
+  `("select", "summarizer", "model", "prompt_template", "metrics", "judges",
+  "generate")`; `if any(getattr(args, n) for n in ...)` => `SpecError("'sweep' takes
+  no selection or scorer flags (it is exhaustive); use 'score --generate' to
+  narrow")` => `error: ...` exit 2 (byte-exact; bare `--judges` => `args.judges =
+  [[]]` truthy => caught). Body mirrors `_score` minus selection: `_load` =>
+  `validate_datasets` => `load_dataset` each => `selected = {name:
+  list(range(len(ds.entries)))}` => empty-scope => `note: no entries in scope;
+  nothing to do` + 0 (before validate_config, as in `_score`) => `validate_config`
+  errors => 2 => `EndpointClient` => `select_summarizers(resolved)` => parse
+  `--server-args/--server-env` => `effective_server_spec` => `ServerCycles` =>
+  `generate_hook(..., print_plan=False)` => `sweep(..., all_metrics=args.all_metrics
+  or args.all, all_judges=args.all_judges or args.all, ...)` => 0. Server flags
+  already legal (SERVER_COMMANDS has "sweep").
+- `build_parser`: sweep subparser gets the seven forbidden flags FOR DETECTION ONLY
+  (so every form parses and the guard emits the canonical error): `--select`,
+  `--summarizer`, `--model`, `--prompt-template`, `--metrics`, `--judges`
+  (all nargs="*" append — bare forms must hit the guard, not argparse),
+  `--generate` (store_true); plus the NEW allowed `--all-metrics/--all-judges/--all`
+  (store_true). NO `--no-metrics/--no-judges` (argparse generic exit 2; no
+  narrowing flags exist).
+
+**Behavior notes:** whole scope committed => `run_generate` pre-scan prints
+`note: all N items already committed; server not started` +
+`done(generate): 0 committed, N skipped, 0 failed`; the hook never calls
+`cycles.ensure` (no spawn). Zero scorers (`default_metrics: []` +
+`default_judges: []`) => generate still runs first, then score's note
+`no metrics or judges selected; nothing scored` and plan
+`0 metric(s), 0 judge(s) | ...`. Message order: warn => plan(generate) =>
+plan(score) => done(generate) => done(score). Exit classes: FailFastAbort
+(stage-1 generate failure; judge transport/HTTP/empty response) => 1; judge
+parse-reject => warn + `failed` count, exit 0.
+
+**TDD slices (red first, commit each green; files `tests/test_sweep_09*.py`;
+ASCII-only; `import harness  # noqa: F401` first line; no conftest/cross-test
+imports; helpers copied verbatim from the 08 files):**
+1. Parser: every forbidden flag form => exact error + exit 2; the three widen flags
+   accepted; `--no-metrics` => argparse exit 2.
+2. Scorer-set units: `resolve_sweep_scorers` (default present-exact / `[]`-zero /
+   absent-all / widen / idempotent) + credential warn+drop via in-process CLI.
+3. Orchestration units (helpers from `test_score_08_lines.py`): message order,
+   no-spawn note when all committed, infeasible warns, zero-scorers note,
+   plan(resume) counts.
+4. Integration (fixture `--serve`, ports >=18112, one port per server run): sweep
+   smoke (24 items; verify byte-exact counts via a throwaway smoke run FIRST, then
+   assert observed), re-sweep no-spawn, judge parse-reject failed count, store row
+   counts via `Store.table_counts()`.
+5. Close 09: 8 boxes + `- 2026-10-28 — implemented: ...` (final test count) in
+   `issues/09-sweep.md`; map Notes => `Done: 01–09, 06a–06c, 07. Open: 10, 11.`;
+   commit `docs(scratch): ticket 09 — close`.
