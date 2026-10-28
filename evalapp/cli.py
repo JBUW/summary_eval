@@ -14,12 +14,14 @@ from .console import Console
 from .datasets import load_dataset
 from .errors import FailFastAbort, RuntimeFailure, SpecError
 from .endpoint_client import EndpointClient
-from .generate import run_generate
+from .generate import generate_hook, run_generate
+from .judge_call import judge_call
 from .model_server import (
     effective_server_spec,
     ServerCycles,
     port_is_free,  # re-exported for check_static
 )
+from .scoring import Flag, score
 from .selection import resolve_selection
 from .summarizers import select_summarizers
 from .store import Store
@@ -77,12 +79,18 @@ def build_parser():
         if command == "check":
             sub.add_argument("--probe-judges", action="store_true", default=False)
             sub.add_argument("--create-store", action="store_true", default=False)
-        if command == "generate":
+        if command in ("generate", "score"):
             sub.add_argument("--summarizer", nargs="+", action="append", default=None)
             sub.add_argument("--model", nargs="+", action="append", default=None)
             sub.add_argument(
                 "--prompt-template", nargs="+", action="append", default=None
             )
+        if command == "score":
+            sub.add_argument("--metrics", nargs="+", action="append", default=None)
+            sub.add_argument("--judges", nargs="*", action="append", default=None)
+            sub.add_argument("--no-metrics", action="store_true", default=False)
+            sub.add_argument("--no-judges", action="store_true", default=False)
+            sub.add_argument("--generate", action="store_true", default=False)
         sub.set_defaults(handler=_HANDLERS[command])
     return parser
 
@@ -188,8 +196,54 @@ def _check(args, console):
 
 def _score(args, console):
     if any(getattr(args, name) is not None for name in _SERVER_FLAG_ATTRS):
-        raise SpecError("--server-* flags require --generate")
-    return _run_command("score", args, console)
+        if not args.generate:
+            raise SpecError("--server-* flags require --generate")
+    config = _load(args, console)
+    declared = validate_datasets(config)
+    datasets = {name: load_dataset(name, decl) for name, decl in declared.items()}
+    scope = resolve_selection(args.select, datasets)
+    if not any(scope.values()):
+        console.note("no entries in scope; nothing to do")
+        return 0
+    errors, resolved = validate_config(config, console)
+    if errors:
+        for message in errors:
+            console.error(message)
+        return 2
+    client = EndpointClient()
+    hook = None
+    if args.generate:
+        summarizers = select_summarizers(
+            resolved, _tokens(args.summarizer), _tokens(args.model),
+            _tokens(args.prompt_template)
+        )
+        args_map = (_parse_json_object(args.server_args, "--server-args")
+                   if args.server_args is not None else None)
+        env_map = (_parse_json_object(args.server_env, "--server-env")
+                   if args.server_env is not None else None)
+        spec = effective_server_spec(config, command=args.server_command,
+                                     args_map=args_map, env_map=env_map,
+                                     port=args.server_port,
+                                     startup_timeout_s=args.server_startup_timeout)
+        cycles = ServerCycles(
+            spec, {name: model["path"] for name, model in resolved["models"].items()},
+            client, console
+        )
+        hook = generate_hook(resolved, datasets, scope, summarizers, client, cycles)
+    metrics_flag = (Flag() if args.metrics is None
+                    else Flag(value=_tokens(args.metrics), no=args.no_metrics))
+    if args.judges is None:
+        judges_flag = Flag(no=args.no_judges)
+    else:
+        tokens = _tokens(args.judges)
+        judges_flag = (Flag(value="bare", no=args.no_judges) if not tokens
+                       else Flag(value=tokens, no=args.no_judges))
+    score(resolved, effective_store_path(config, args.store), metrics_flag,
+          judges_flag, datasets, scope,
+          (_tokens(args.summarizer), _tokens(args.model),
+           _tokens(args.prompt_template)), console, client, judge_call,
+          generate=hook)
+    return 0
 
 
 def _clear(args, console):

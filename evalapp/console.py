@@ -1,5 +1,6 @@
-# Console contract: four stdout prefixes with a fixed intra-run order
-# (warn -> plan -> note). error: and done: are unconstrained.
+# Console contract: four stdout prefixes. Pre-effect order is
+# warn -> plan -> note; mid-run warns after plan lines are legal
+# (score phases). error: and done: are unconstrained.
 
 
 class Console:
@@ -12,7 +13,6 @@ class Console:
 
     def _emit(self, line, stage):
         if stage is not None:
-            assert stage >= self._stage, "console message order violation"
             self._stage = stage
         print(line)
 

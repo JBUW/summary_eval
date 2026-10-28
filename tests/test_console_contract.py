@@ -1,4 +1,9 @@
+import contextlib
+import io
+
 import harness
+
+from evalapp.console import Console
 
 
 def test_clear_noop_uses_note_not_error(tmp_path):
@@ -47,3 +52,15 @@ def test_spec_error_uses_error_and_exit_class_2(tmp_path):
     assert len(errors) == 1
     assert "out of range" in errors[0]
     assert not result.with_prefix("plan(generate):")
+
+
+def test_warn_after_plan_does_not_raise():
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        console = Console()
+        console.plan("score", "1 metric, 1 item")
+        console.warn("mid-run warning after plan")
+    assert buffer.getvalue().splitlines() == [
+        "plan(score): 1 metric, 1 item",
+        "warn: mid-run warning after plan",
+    ]

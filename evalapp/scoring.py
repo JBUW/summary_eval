@@ -8,6 +8,7 @@ own ``plan:`` line (console stages are monotonic).
 """
 import csv
 import json
+import os
 from dataclasses import dataclass
 
 from . import metrics
@@ -92,6 +93,20 @@ def resolve_scorers(resolved, metrics_flag, judges_flag):
     metric_names = tuple(spec.name for spec in metrics.resolve(tokens))
     judges, notes = _judge_names(resolved, judges_flag)
     return ResolvedScorers(metrics=metric_names, judges=judges, notes=tuple(notes))
+
+
+def _credential_preflight(resolved, judges_flag):
+    if judges_flag.value is None or judges_flag.value == "bare":
+        return
+    for token in judges_flag.value:
+        if token in ("*", "[]"):
+            continue
+        variable = resolved["judges"][token]["api_key_env"]
+        if isinstance(variable, str) and os.environ.get(variable) in (None, ""):
+            raise SpecError(
+                f"judge '{token}': environment variable "
+                f"'{variable}' is unset or empty"
+            )
 
 
 def _without_empty_bracket(tokens):
@@ -464,14 +479,16 @@ def score(
     resolved, store_path, metrics_flag, judges_flag, datasets, selected,
     summarizer_selection, console, client, judge_call, generate=None,
 ):
-    """Full score run: pre-effect (scorers, summarizers, infeasible warns)
-    before the store, then plan (resume pre-scan) BEFORE generate, then the
+    """Full score run: pre-effect (scorers, summarizers, judge credential
+    preflight, infeasible warns) before the store, then plan (resume
+    pre-scan) BEFORE generate, then the
     generate hook if any (a stage-1 RuntimeFailure propagates before any
     scoring), then the metrics phase (a failure propagates before any judge
     call), then the judges phase; the store closes in a finally. Returns
     (scorers, plan, metrics_result, judges_result)."""
     scorers = resolve_scorers(resolved, metrics_flag, judges_flag)
     summarizers = select_summarizers(resolved, *summarizer_selection)
+    _credential_preflight(resolved, judges_flag)
     pairs = infeasible_pairs(resolved, scorers, datasets)
     for kind, name, dataset_name in pairs:
         console.warn(
