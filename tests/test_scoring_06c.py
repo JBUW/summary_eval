@@ -147,6 +147,22 @@ def _client(fake):
     return EndpointClient(transport=fake)
 
 
+def _run_phase(store, resolved, judges, dataset, client, console,
+               infeasible=()):
+    return run_judges_phase(
+        store,
+        resolved,
+        ResolvedScorers((), tuple(judges), ()),
+        set(infeasible),
+        {"ds": dataset},
+        {"ds": [0]},
+        select_summarizers(resolved),
+        client,
+        judge_call,
+        console,
+    )
+
+
 def test_render_substitutes_transcript_and_summary():
     entry = _judge_entry(
         system_content="Grade {transcript} vs {summary}",
@@ -277,3 +293,80 @@ def test_judge_call_failure_raises_detail_only_runtime_failure(
 
     assert str(excinfo.value) == detail
     assert excinfo.value.__cause__ is outcome
+
+
+def test_phase_commits_scores_through_real_handler(tmp_path):
+    model_path, template_path = _workspace(tmp_path)
+    resolved = _resolved(model_path, template_path, judges={"j": _judge_entry()})
+    store = Store(tmp_path / "store.db")
+    try:
+        gen_sha, _transcript_sha = _commit_generation(store, "t0", 0)
+        judge_sha = _seed_judge(store, _judge_entry())
+        fake = _FakeTransport()
+        fake.enqueue(
+            (200, _completion(
+                "factual_correctness: 1.0\ncompleteness: 0.5\nconciseness: 0.25"
+            ))
+        )
+        console = _RecordingConsole()
+        result = _run_phase(
+            store, resolved, ("j",), _dataset(), _client(fake), console
+        )
+        assert result == JudgePhaseResult(
+            items=1, missing_generation=0, committed=1, skipped=0,
+            dropped=0, failed=0,
+        )
+        assert store.get_judge_evaluation(
+            judge_evaluation_id(judge_sha, gen_sha, None)
+        ) == (1.0, 0.5, 0.25)
+    finally:
+        store.close()
+
+
+def test_phase_rejected_parse_warns_and_counts_failed(tmp_path):
+    model_path, template_path = _workspace(tmp_path)
+    resolved = _resolved(model_path, template_path, judges={"j": _judge_entry()})
+    store = Store(tmp_path / "store.db")
+    try:
+        gen_sha, _transcript_sha = _commit_generation(store, "t0", 0)
+        judge_sha = _seed_judge(store, _judge_entry())
+        fake = _FakeTransport()
+        fake.enqueue((200, _completion("I cannot evaluate these qualities.")))
+        console = _RecordingConsole()
+        result = _run_phase(
+            store, resolved, ("j",), _dataset(), _client(fake), console
+        )
+        assert result == JudgePhaseResult(
+            items=1, missing_generation=0, committed=0, skipped=0,
+            dropped=0, failed=1,
+        )
+        assert console.warnings == [
+            "judge 'j' returned no extractable qualities "
+            "for entry #0 in dataset 'ds' (unit not committed)"
+        ]
+        assert store.get_judge_evaluation(
+            judge_evaluation_id(judge_sha, gen_sha, None)
+        ) is None
+    finally:
+        store.close()
+
+
+def test_phase_transport_failure_exits_with_wrapped_message(tmp_path):
+    model_path, template_path = _workspace(tmp_path)
+    resolved = _resolved(model_path, template_path, judges={"j": _judge_entry()})
+    store = Store(tmp_path / "store.db")
+    try:
+        _commit_generation(store, "t0", 0)
+        _seed_judge(store, _judge_entry())
+        fake = _FakeTransport()
+        fake.enqueue(HttpError(500, "boom"))
+        with pytest.raises(
+            RuntimeFailure,
+            match="judge 'j' failed for entry #0 in dataset 'ds': HTTP 500",
+        ):
+            _run_phase(
+                store, resolved, ("j",), _dataset(), _client(fake),
+                _RecordingConsole(),
+            )
+    finally:
+        store.close()
