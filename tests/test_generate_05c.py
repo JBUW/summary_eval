@@ -3,6 +3,8 @@ deterministic item order, pre-scan skip, and per-item atomic commit,
 through the fake endpoint client (05a). No real server, no network."""
 import json
 
+import pytest
+
 import harness  # noqa: F401  (puts the repo root on sys.path)
 
 from evalapp.console import Console
@@ -361,4 +363,111 @@ def test_zero_items_plan_and_done_only(tmp_path):
         "plan(generate): 1 summarizer, 0 items, 1 server cycle",
         "done(generate): 0 committed, 0 skipped, 0 failed",
     ]
+    store.close()
+
+
+def _reference_dataset_file(tmp_path):
+    path = tmp_path / "ds_ref.jsonl"
+    path.write_text("\n".join(
+        json.dumps({"t": f"t{i}", "r": f"ref{i}"}) for i in range(2)
+    ) + "\n")
+    return path
+
+
+def test_item_commit_touches_all_five_tables(tmp_path):
+    model_path, template_path = _workspace(tmp_path)
+    resolved = _resolved(model_path, template_path)
+    path = _reference_dataset_file(tmp_path)
+    datasets = {"ds": Dataset(
+        name="ds",
+        decl={"path": str(path), "transcript_field": "t", "reference_field": "r"},
+        entries=[{"transcript": "t0", "reference": "ref0"}],
+    )}
+    selected = {"ds": [0]}
+    fake = _FakeTransport()
+    fake.enqueue((200, _completion("g0")))
+    console = _CapturingConsole()
+    cycles = _FakeCycles()
+    store = Store(str(tmp_path / "store.db"))
+    run_generate(
+        store, console, resolved, datasets, selected,
+        select_summarizers(resolved), _client(fake), cycles,
+    )
+    transcript_sha = transcript_id("t0")
+    model_sha = model_id(b"model-bytes")
+    template_sha = template_id("sys", "usr")
+    generation_sha = generation_id(transcript_sha, model_sha, {}, template_sha, {})
+    assert store.get_generation(generation_sha) == "g0"
+    assert dict(store.table_counts()) == {
+        "transcripts": 1,
+        "reference_summaries": 1,
+        "models": 1,
+        "prompt_templates": 1,
+        "generations": 1,
+        "judges": 0,
+        "judge_evaluations": 0,
+        "metric_evaluations": 0,
+    }
+    assert console.lines == [
+        "plan(generate): 1 summarizer, 1 item, 1 server cycle",
+        "done(generate): 1 committed, 0 skipped, 0 failed",
+    ]
+    store.close()
+
+
+def test_no_reference_field_no_summary_row(tmp_path):
+    model_path, template_path = _workspace(tmp_path)
+    resolved = _resolved(model_path, template_path)
+    datasets = {"ds": _dataset()}
+    selected = {"ds": [0]}
+    fake = _FakeTransport()
+    fake.enqueue((200, _completion("g0")))
+    console = _CapturingConsole()
+    cycles = _FakeCycles()
+    store = Store(str(tmp_path / "store.db"))
+    run_generate(
+        store, console, resolved, datasets, selected,
+        select_summarizers(resolved), _client(fake), cycles,
+    )
+    counts = dict(store.table_counts())
+    assert counts["reference_summaries"] == 0
+    assert counts["transcripts"] == 1
+    assert counts["models"] == 1
+    assert counts["prompt_templates"] == 1
+    assert counts["generations"] == 1
+    store.close()
+
+
+def test_failure_is_complete_or_absent(tmp_path):
+    model_path, template_path = _workspace(tmp_path)
+    resolved = _resolved(model_path, template_path)
+    datasets = {"ds": _dataset()}
+    selected = {"ds": [0, 1]}
+    fake = _FakeTransport()
+    fake.enqueue((200, _completion("g0")), (500, "boom"))
+    console = _CapturingConsole()
+    cycles = _FakeCycles()
+    store = Store(str(tmp_path / "store.db"))
+    with pytest.raises(RuntimeFailure, match="HTTP 500"):
+        run_generate(
+            store, console, resolved, datasets, selected,
+            select_summarizers(resolved), _client(fake), cycles,
+        )
+    transcript_sha = transcript_id("t0")
+    model_sha = model_id(b"model-bytes")
+    template_sha = template_id("sys", "usr")
+    generation_sha = generation_id(transcript_sha, model_sha, {}, template_sha, {})
+    assert store.get_generation(generation_sha) == "g0"
+    assert dict(store.table_counts()) == {
+        "transcripts": 1,
+        "reference_summaries": 0,
+        "models": 1,
+        "prompt_templates": 1,
+        "generations": 1,
+        "judges": 0,
+        "judge_evaluations": 0,
+        "metric_evaluations": 0,
+    }
+    assert cycles.stops == 1
+    assert console.lines == ["plan(generate): 1 summarizer, 2 items, 1 server cycle"]
     store.close()
