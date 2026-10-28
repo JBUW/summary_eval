@@ -649,11 +649,12 @@ def test_judge_call_failure_propagates(tmp_path):
         _seed_judge(store, _judge_entry())
 
         def failing(*args):
-            raise RuntimeFailure(
-                "judge 'j' failed for entry #0 in dataset 'ds': http 500"
-            )
+            raise RuntimeFailure("HTTP 500")
 
-        with pytest.raises(RuntimeFailure, match="http 500"):
+        with pytest.raises(
+            RuntimeFailure,
+            match="judge 'j' failed for entry #0 in dataset 'ds': HTTP 500",
+        ):
             _run_phase(
                 store, resolved, ("j",), _dataset(), failing,
                 _RecordingConsole(),

@@ -419,10 +419,16 @@ def run_judges_phase(
                     if store.get_judge_evaluation(unit_sha) is not None:
                         skipped += 1
                         continue
-                    scores = judge_call(
-                        client, name, judge_entry, entry["transcript"],
-                        generation_text, reference,
-                    )
+                    try:
+                        scores = judge_call(
+                            client, name, judge_entry, entry["transcript"],
+                            generation_text, reference,
+                        )
+                    except RuntimeFailure as exc:
+                        raise RuntimeFailure(
+                            f"judge '{name}' failed for entry #{index} "
+                            f"in dataset '{dataset.name}': {exc}"
+                        ) from exc
                     if scores is None:
                         console.warn(
                             f"judge '{name}' returned no extractable "
