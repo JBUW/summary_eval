@@ -128,3 +128,50 @@ No `done(generate)` on failure. `cycles.stop()` stays in the `finally`. A SpecEr
 **Slices (TDD, red first, commit each green):** (1) FailFastAbort + Console.log + failure block + cli mapping + 05c test update + `tests/test_generate_05d.py`; (2) fixture serve mode + `tests/test_generate_05d_integration.py` (4 tests); (3) close — boxes + implemented comment + map Notes.
 
 No doc changes (docs/commands.md §generate "Fail-fast" already specifies the block verbatim, including the `qmsum-dev#1` example).
+
+### Ticket 08 (settled 2026-10-28)
+
+**Scope:** the `score` CLI (`cli.py` `_score` stub at line 189) wires the settled scoring module (06a–06c) to the console and store; plan/done/note lines, credential preflight, `--generate` two-stage, resume, fail-fast. No scoring-module behavior changes beyond what 08 requires of `scoring.py` (print responsibility) and `generate.py` (plan-text helper).
+
+1. **Console guard relaxation (required).** `run_metrics_phase` / `run_judges_phase` warn mid-run, AFTER the always-printed plan lines ⇒ a real `Console` would AssertionError (warn=0 < plan=1). Drop the hard assert in `_emit` (keep stage bookkeeping or simplify). Update the `console.py` top-of-file comment: warn→plan→note is the pre-effect order; mid-run warns after the plan lines are legal (score phases). `tests/test_console_contract.py` expectations unchanged (check-flow order unchanged); add one warn-after-plan-doesn't-raise test.
+2. **Plan-line interleaving — `score()` prints BOTH plan lines** (not the CLI). Order inside `score()`: resolve_scorers → select_summarizers → credential preflight → infeasible warns → [no-scorable-pairs note] → `Store` → `score_plan` → [plan(generate) when `generate is not None`] → plan(score) → generate hook → metrics phase → judges phase → close (finally) → [generation notes | no-scorers note] → done(score) → return.
+   - `plan(score): {m} metric(s), {j} judge(s) | {i} item(s) | {t} to run, {a} already scored | {f} infeasible` (pluralize metric/judge/item via a local `_plural`; "infeasible" left unpluralized).
+   - `plan(generate)` text is store-free ⇒ new pure helper in generate.py **`generate_plan_text(datasets, selected, summarizers)`**, used by both `run_generate` (refactor its plan line to use it) and `score()` (**lazy function-local import — generate.py line 11 imports from scoring.py ⇒ circular**). `run_generate` and `generate_hook` gain a `print_plan=True` kwarg (default preserves 05c/05d behavior); the CLI `--generate` hook passes `print_plan=False`.
+   - scoring.py needs its own one-line `_plural` (cannot import from generate).
+3. **`done(score): {c} committed, {d} dropped, {f} failed`**, printed by `score()`: committed = metrics.committed + judges.committed; dropped = metrics.dropped + judges.dropped; failed = judges.failed. Always printed (empty scorer set ⇒ `0 committed, 0 dropped, 0 failed`).
+4. **Notes (all exit 0, printed by `score()`):**
+   - `note: no committed generations in scope; run 'generate' first` — no `--generate`, scorer set non-empty, `plan.items > 0`, ALL triples missing generation (N from `metrics_result.missing_generation`, total from `metrics_result.items`).
+   - `note: N selected items have no committed generation; run 'generate' first` — 0 < N < total (same preconditions).
+   - `note: no scorable pairs in scope; nothing scored` — zero feasible **(selection-scoped)** (scorer, dataset-with-selected-entries) pairs, i.e. for every scorer every in-scope dataset is in the infeasible set; scorer set non-empty; printed right after the infeasible warns, BEFORE the plan lines, in all contexts; with `--generate` the generation stage still runs afterward. (Contrast: `infeasible_pairs()` itself is NOT selection-scoped — this check is a new scoped computation.)
+   - `note: no metrics or judges selected; nothing scored` — both flag families empty; printed AFTER the plan line(s); with `--generate` the generation stage runs first, then the note. The two "nothing scored" notes are mutually exclusive (empty vs non-empty scorer set); generation notes are suppressed when the scorer set is empty.
+5. **Credential preflight:** only judges selected by **explicit name** (non-`*`/non-`[]` tokens from the `--judges` flag value; NOT bare/default/`*`/omitted); `api_key_env` unset or empty ⇒ SpecError `judge '{name}': environment variable '{variable}' is unset or empty` (static, exit 2, pre-store; check `isinstance(variable, str) and os.environ.get(variable) in (None, "")` — same wording as `check_static.py`). Placement: in `score()` pre-effect AFTER resolve_scorers + select_summarizers, BEFORE the infeasible warns (failed preflight exits 2 without warns).
+6. **Bare `--metrics` (no tokens):** parser-level error, exit 2 — argparse `nargs="+"` ⇒ `error: argument --metrics: expected at least one argument` (via `_Parser.error`). `--judges` uses `nargs="*"` (bare legal ⇒ `Flag(value="bare")`).
+7. **CLI Flag construction:** metrics omitted ⇒ `Flag()`; else `Flag(value=_tokens(args.metrics))` (+`no=True` when `--no-metrics` present — resolve_scorers then raises the mutual-exclusion SpecError). Judges omitted ⇒ `Flag()`; `args.judges == []` or all groups empty ⇒ `Flag(value="bare")`; else the flattened token tuple; `no=True` similarly. `--metrics`/`--judges` repeatable via `action="append"`.
+8. **Empty scope:** keep the existing pattern — `note: no entries in scope; nothing to do`, exit 0, before any plan line (mirror `_generate`'s position: after resolve_selection, before validate_config).
+9. **CLI `_score` pre-effect order (exit 2 before store/network):** parse (bare `--metrics` ⇒ 2) → `--server-*` without `--generate` ⇒ 2 (keep existing guard, now conditioned on `not args.generate`) → load config → validate_datasets/load_dataset → resolve_selection → empty-scope note+0 → validate_config errors ⇒ 2 → (if `--generate`: select_summarizers [SpecError], args/env JSON, `effective_server_spec`, `EndpointClient`, `ServerCycles`, `generate_hook(..., print_plan=False)`) → build Flags → `score(...)` → return 0. `EndpointClient` + `judge_call` (imported from `.judge_call`) always constructed (judges need them); `ServerCycles` ONLY with `--generate`.
+10. **Judge-failure exit 1 path:** already in 06b/06c — just wire the real `judge_call` from `evalapp/judge_call.py` into the CLI call.
+11. **Integration test judge path (FINALIZED):** the fixture `--serve` replies `"fake: <user>"` ⇒ zero quality labels ⇒ all 3 qualities missing ⇒ `JudgeParse(rejected=True)` ⇒ judge unit warns + `failed` count (assert fail path + exit 0 + `done(score): … N failed` in integration). Judge SUCCESS stays covered by 06c-style unit tests (real `EndpointClient(transport=fake)` + real parser). **Do NOT extend the fixture** (05d byte-unchanged constraint).
+
+**Doc examples to assert verbatim (docs/commands.md §score):**
+```
+score --select meetbank * --summarizer std
+  plan(score): 4 metrics, 1 judge | 50 items | 250 to run, 0 already scored | 0 infeasible
+  done(score): 250 committed, 0 dropped, 0 failed        exit 0
+score --no-judges --select qmsum-dev #3-7
+  plan(score): 4 metrics, 0 judges | 5 items | 20 to run, 0 already scored | 0 infeasible
+score --generate --select meetbank @doc-123 --summarizer std --judges openrouter-llama-3-70b
+  plan(generate): 1 summarizer, 1 item, 1 server cycle
+  plan(score): 4 metrics, 1 judge | 1 item | 5 to run, 0 already scored | 0 infeasible
+  done(generate): 1 committed, 0 skipped, 0 failed
+  done(score): 5 committed, 0 dropped, 0 failed          exit 0
+score --server-port 8081
+  error: --server-* flags require --generate             exit 2
+```
+
+**Slices (TDD, red first, commit each green; files `tests/test_score_08*.py`, ASCII-only, `import harness  # noqa: F401` first line where used, fixtures copied verbatim per 06b/06c — zero cross-test imports):**
+1. Console guard relaxation (+ warn-after-plan test in `tests/test_console_contract.py`) + parser (nargs/append/new flags; widen `--summarizer/--model/--prompt-template` to `if command in ("generate", "score")`) + `_score` pre-effect exit-2s: bare `--metrics` ⇒ 2, `--server-*` without `--generate` ⇒ 2 (and with `--generate` passes the guard), no+value mutual exclusion ⇒ 2 (exact SpecError text), credential preflight ⇒ 2 (explicit name fails; `*`/bare/omitted pass).
+2. Plan/notes/done lines via `score()` unit tests with fake client / real scoring functions / real `Store` / **real `Console`** (proves no assert crash on mid-run warn): metrics-only (docs format), judges-only, bare judges, zero scorers (`--no-metrics --no-judges` ⇒ plan 0/0 + no-scorers note + done 0-0-0), all-missing generations note, partial note (N), no-scorable-pairs note (reference-requiring scorer over reference-less dataset, selection-scoped), mid-run reference warns interleaved after plan.
+3. `--generate` two-stage: plan interleaving (plan(generate) before plan(score), hook in between), `generate_plan_text` helper + `print_plan=False` hook (plan(generate) appears exactly once), stage-1 FailFastAbort ⇒ no scoring (assert phases didn't run), 05c/05d behavior preserved (default `print_plan=True`).
+4. Resume: re-run skips committed (item, scorer) units, fake client sees no calls on them, remainder only; `to_run`/`already scored` counts correct.
+5. Integration via fixture `--serve` (ports ≥18090, one port per server run; 05b owns 18081/9090/7070/8081, 05d used 18090 — pick fresh, e.g. 18100+; TIME_WAIT ⇒ distinct ports per test): score smoke through the real endpoint (plan/done lines byte-exact, exit 0, store rows: metric_evaluations/judge_evaluations/reference_summaries), `score --generate` two-stage end-to-end, judge-reject (failed count, exit 0), judge-500 fail-fast exit 1 naming item+judge (use `--fail-after`), resume-after-partial-failure (re-run on a different port, no calls on committed units).
+6. Close 08: all **12** boxes in `issues/08-score.md` + `- 2026-10-28 — implemented: …` under `## Comments` (mention final test count); map Notes → `Done: 01–08, 06a–06c, 07. Open: 09, 10, 11.`; commit `docs(scratch): ticket 08 — close`.
