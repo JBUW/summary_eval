@@ -269,3 +269,131 @@ imports; helpers copied verbatim from the 08 files):**
 5. Close 09: 8 boxes + `- 2026-10-28 — implemented: ...` (final test count) in
    `issues/09-sweep.md`; map Notes => `Done: 01–09, 06a–06c, 07. Open: 10, 11.`;
    commit `docs(scratch): ticket 09 — close`.
+### Ticket 10 (settled 2026-10-28)
+
+Scope: the `report` command — strictly read-only roll-up over the store; no
+server, no model or judge calls, no writes of any kind.
+
+**Parser (`build_parser`, cli.py):**
+- `--summarizer/--model/--prompt-template` (nargs="+" append): add "report" to
+  the existing `("generate", "score")` block.
+- New `if command == "report":` block: `--metrics` (nargs="+" append),
+  `--judges` (nargs="*" append), `--no-metrics`/`--no-judges` (store_true),
+  `--json` (store_true), `--by` (choices=("dataset",), default None),
+  `--blind-sample` (type=int, default None), `--csv` (default None). NO
+  `--generate`; `--server-*` stays off the report subparser (argparse's generic
+  exit 2 — report has no generate stage, as the docs require).
+- `tests/test_subcommands.py`: remove `["report", "--json"]` from
+  `test_unknown_flags` (the flag becomes valid).
+
+**`_report` (replaces the `_HANDLERS["report"]` lambda):**
+1. Pre-config guards (before `_load`), SpecError ⇒ `error:` + exit 2:
+   `args.csv is not None and args.json` → `--csv and --json are mutually
+   exclusive`; `args.blind_sample is not None and args.blind_sample < 0` →
+   `invalid --blind-sample {n} (must be >= 0)`.
+2. Mirror `_score`: `_load` → `validate_datasets` → `load_dataset` each →
+   `scope = resolve_selection(args.select, datasets)` → `scope =
+   apply_blind_sample(scope, args.blind_sample)` → empty-scope `note: no entries
+   in scope; nothing to do` + 0 (BEFORE `validate_config`, as in `_score`) →
+   `validate_config` errors ⇒ 2 → flag wiring verbatim from `_score` (metrics:
+   omitted ⇒ `Flag(no=...)` else `Flag(value=_tokens(...), no=...)`; judges:
+   omitted ⇒ `Flag(no=...)`, bare ⇒ `Flag(value="bare", ...)`, else token
+   list) → `scorers = resolve_scorers(resolved, metrics_flag, judges_flag)` →
+   `summarizers = select_summarizers(resolved, _tokens(args.summarizer),
+   _tokens(args.model), _tokens(args.prompt_template))` → per-dataset plan line
+   `plan(report): {name} {len(indices)} entries` (non-empty datasets only) →
+   `report(...)` → 0.
+3. NO judge-credential preflight, NO infeasible-pair warns (nothing executes).
+
+**New module `evalapp/report.py`:**
+- `apply_blind_sample(scope, n)`: None → unchanged; n > 0 → `{name:
+  indices[-n:]}`; n == 0 → `{name: []}` (explicit — `[-0:]` is the full list).
+- `candidate_label(s)`: `s.name` if not None else `f"{s.model}+{s.template}"`.
+- `_stats(values) -> (n, mean, min, max)`; empty → `(0, None, None, None)`.
+- `report(resolved, store_path, datasets, scope, summarizers, scorers, console,
+  by_dataset=False, json_out=False, csv_path=None)`:
+  1. csv parent check FIRST: `csv_path` given, its `os.path.dirname` non-empty,
+     and not a directory → SpecError `f"csv path '{csv_path}': parent
+     directory does not exist"` (bare filename is fine).
+  2. `Store(store_path)` (bootstrap allowed; "read-only" settled as: no
+     commits, no upserts, no calls), close in finally.
+  3. Groups: default = one union group; `--by dataset` = one group per dataset
+     in config order (a transcript in scope counts in both). Group scope =
+     `{transcript_id(ds.entries[i]["transcript"]) for i in scope[name]}`.
+  4. Rows: per group in order, candidates in `select_summarizers` order:
+     `model_sha = store.model_sha_by_name(c.model)` (None ⇒ no generations),
+     `template_sha = store.template_sha_by_name(c.template)`, `gens =
+     store.generations_for(model_sha, canonical_json(c.model_args),
+     template_sha, canonical_json(c.gen_params))` filtered to the group scope →
+     gen_shas. Then each metric in `scorers.metrics` → `store.metric_values(
+     metric, gen_shas)` (ALL rows; multiple reference variants pool); then each
+     judge in `scorers.judges` → `judge_sha(resolved, name)` × the three
+     qualities of `evalapp.judge_parser.QUALITIES` → `store.
+     judge_quality_values(judge_sha, quality, gen_shas)` (NULLs skipped), label
+     `f"{quality} (judge)"`. All three quality rows always emitted (n=0 ⇒
+     dashes, not omitted).
+  5. Zero rows (`sum(row.n) == 0`) → `note: no scored results in scope; run
+     'score' (or 'score --generate') first`, return 0, NO table, NO CSV file.
+  6. Output: table = flat comma rows; header `candidate,scorer,n,mean,min,max`
+     (default) / `candidate,dataset,scorer,n,mean,min,max` (`--by dataset`);
+     stats formatted `.2f`; n=0 ⇒ `-` for mean/min/max. `--json`:
+     `json.dumps(rows, indent=2)` where each row is a dict in insertion key
+     order candidate, [dataset,] scorer, n, mean, min, max; full-precision
+     floats; `null` for missing stats. `--csv PATH`: `csv.writer` default
+     (minimal) dialect, same formatting as the table, table suppressed (plan
+     lines still on stdout), file written only after the zero-rows check, then
+     `note: wrote N rows to <path>` (N = data rows excluding the header).
+
+**New read-only `Store` methods (store.py, next to `get_generation`):**
+- `model_sha_by_name(name)`: `SELECT model_sha256 FROM models WHERE name = ?
+  ORDER BY updated_at DESC, model_sha256 LIMIT 1` (latest wins, sha tiebreak)
+  or None.
+- `template_sha_by_name(name)`: same shape over `prompt_templates`.
+- `generations_for(model_sha, model_args, template_sha, gen_params)`:
+  four-equality WHERE → `[(generation_sha256, transcript_sha256)]`; `[]` when
+  either sha is None.
+- `metric_values(metric_name, generation_shas)`: pooled `value` list; `[]`
+  when no shas; IN-list of `?` placeholders.
+- `judge_quality_values(judge_sha, quality, generation_shas)`:
+  `AND {quality} IS NOT NULL` (quality is a fixed constant from QUALITIES —
+  interpolation is safe).
+
+**scoring.py:** rename `_judge_sha` → `judge_sha` (def + 2 call sites);
+nothing else.
+
+**TDD slices (red first, commit each green; files `tests/test_report_10*.py`;
+ASCII-only; `import harness  # noqa: F401` after the module docstring; no
+conftest/cross-test imports; helpers copied verbatim from the 08 files):**
+1. Parser (`test_report_10_parser.py`): the full flag set is accepted (exit 0
+   or a later-stage exit, never argparse); `--server-port 1` → argparse exit 2;
+   `--json --csv x` → exit 2 exact mutex wording; `--blind-sample -1` → exit 2
+   exact wording; `--by foo` → argparse exit 2; `--metrics a --no-metrics` →
+   exit 2 resolve wording; bare `--judges --no-judges` → exit 2 resolve
+   wording. Plus the `test_subcommands.py` removal.
+2. Core units (`test_report_10_core.py`): `apply_blind_sample` (None/0/N/
+   >len); `candidate_label`; `_stats`; `report()` in-process with a real
+   `resolved` built via `validate_config` on a harness-written config +
+   `add_summarizer_section` (never hand-craft the resolved shape); store
+   seeded with `upsert_model/upsert_template/upsert_generation/upsert_judge` +
+   `upsert_metric_evaluation`/`upsert_judge_evaluation` known values ⇒ exact
+   table lines (.2f, dashes), latest-wins name lookup, NULL quality skip,
+   multiple-reference pooling, zero-rows note exact, csv exact rows (assert
+   via `csv.reader`) + note, csv missing-parent exit 2 wording, `--json` exact
+   text (key order, nulls, indent=2), `--by dataset` shape.
+3. Store units (`test_report_10_store.py`): the five new methods against
+   seeded stores.
+4. Integration (`test_report_10_integration.py`, ports >=18200, one port per
+   server run): helpers verbatim from `test_score_08_integration.py`;
+   `generate` (GENERATE_ARGV-style) → `score --no-judges --metrics
+   faithfulness` → report variants: default table (exact plan lines + header;
+   data rows assert prefix `s,faithfulness,3,` + fields parse as float/dash —
+   do NOT assert metric values, matching the 08 style), `--json` (parse +
+   keys/n), `--by dataset`, `--blind-sample 2` (n=2), zero rows on `--select
+   unnamed` (exact note, exit 0); store counts unchanged before/after report
+   (read-only).
+5. Close 10: 10 boxes + `- 2026-10-28 — implemented: ...` (final test count)
+   under `## Comments` in `issues/10-report.md`; note the doc-example
+   inconsistency (`--metrics '[]' --no-judges ... --csv` → "wrote 4 rows" is
+   impossible: zero scorers ⇒ zero-rows note; accepted SHALLOWLY per the
+   ticket's own note); map Notes → `Done: 01–10, 06a–06c, 07. Open: 11.`;
+   commit `docs(scratch): ticket 10 — close`; ff-merge `ticket/10`.
