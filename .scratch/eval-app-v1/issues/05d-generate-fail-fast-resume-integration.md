@@ -8,10 +8,11 @@
 
 Series note (05a–05d): ticket 05 (Endpoint client, model server lifecycle, `generate`) is split into these four parts; implement them in sequence, each self-contained and committing on its own.
 
-- [ ] Fail-fast: first HTTP error, empty completion, server death, or readiness timeout ⇒ exit 1 with the failing item, the error, the last ~20 lines of the server log, and a resume hint (docs example: `note: re-run to resume; 1 item already committed`).
-- [ ] Failure line format matches the docs exactly: `error: item <dataset>#<n> (summarizer '<s>'): <error>` followed by the log tail and the resume note (docs example: `error: item qmsum-dev#1 (summarizer 'std'): HTTP 500 from model server`).
-- [ ] Resume: a re-run after a partial failure skips the already-committed items via the pre-scan (05c) with no model call on them and commits the remainder — no separate resume path, no re-rolling of committed generations.
-- [ ] Integration tests (inheriting the P0b smoke criteria) through a real, trivially cheap server: the plan/done line formats, the exit classes (0 success, 1 failure, 2 contract error), and the resulting store rows; a partial failure mid-run resumes correctly with no re-calls on committed items.
+- [x] Fail-fast: first HTTP error, empty completion, server death, or readiness timeout ⇒ exit 1 with the failing item, the error, the last ~20 lines of the server log, and a resume hint (docs example: `note: re-run to resume; 1 item already committed`).
+- [x] Failure line format matches the docs exactly: `error: item <dataset>#<n> (summarizer '<s>'): <error>` followed by the log tail and the resume note (docs example: `error: item qmsum-dev#1 (summarizer 'std'): HTTP 500 from model server`).
+- [x] Resume: a re-run after a partial failure skips the already-committed items via the pre-scan (05c) with no model call on them and commits the remainder — no separate resume path, no re-rolling of committed generations.
+- [x] Integration tests (inheriting the P0b smoke criteria) through a real, trivially cheap server: the plan/done line formats, the exit classes (0 success, 1 failure, 2 contract error), and the resulting store rows; a partial failure mid-run resumes correctly with no re-calls on committed items.
 
 ## Comments
 - 2026-10-27 — split from ticket 05 (Endpoint client, model server lifecycle, `generate`) into 05a–05d.
+- 2026-10-28 — implemented: fail-fast block (first HTTP error / empty completion / server death / readiness timeout ⇒ exit 1 with the failing item, the error, the last ~20 server log lines, and a resume note); resume via the 05c pre-scan with no re-calls on committed items; fixture serve mode (`--serve` HTTP server); 4 end-to-end integration tests (success, failure, resume, busy port); 493 tests green via bin/check
