@@ -229,7 +229,7 @@ def _score(args, console):
             spec, {name: model["path"] for name, model in resolved["models"].items()},
             client, console
         )
-        hook = generate_hook(resolved, datasets, scope, summarizers, client, cycles)
+        hook = generate_hook(resolved, datasets, scope, summarizers, client, cycles, print_plan=False)
     metrics_flag = (Flag(no=args.no_metrics) if args.metrics is None
                     else Flag(value=_tokens(args.metrics), no=args.no_metrics))
     if args.judges is None:

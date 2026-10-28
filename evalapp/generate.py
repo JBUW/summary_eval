@@ -58,9 +58,36 @@ def _plural(count, singular, plural):
     return singular if count == 1 else plural
 
 
-def run_generate(store, console, resolved, datasets, selected, summarizers, client, cycles):
+def generate_plan_text(datasets, selected, summarizers):
+    """The plan(generate) line text, store-free: summarizer, item, and
+    server-cycle counts. Used by run_generate and by score() (which
+    imports it lazily to avoid the generate<->scoring cycle)."""
+    item_count = len(summarizers) * sum(
+        len(indices) for indices in selected.values()
+    )
+    cycle_count = len(
+        {
+            (summarizer.model, canonical_json(summarizer.model_args))
+            for summarizer in summarizers
+        }
+    )
+    return (
+        f"{len(summarizers)} "
+        f"{_plural(len(summarizers), 'summarizer', 'summarizers')}, "
+        f"{item_count} {_plural(item_count, 'item', 'items')}, "
+        f"{cycle_count} "
+        f"{_plural(cycle_count, 'server cycle', 'server cycles')}"
+    )
+
+
+def run_generate(
+    store, console, resolved, datasets, selected, summarizers, client,
+    cycles, print_plan=True,
+):
     """One generate run: the plan line, the pre-scan skip, and the
-    per-item atomic commits (one complete-or-absent unit per item)."""
+    per-item atomic commits (one complete-or-absent unit per item).
+    print_plan defaults to True (standalone CLI); score() prints the
+    plan(generate) line itself and passes print_plan=False."""
     items = [
         (summarizer, dataset, index)
         for summarizer in summarizers
@@ -68,20 +95,10 @@ def run_generate(store, console, resolved, datasets, selected, summarizers, clie
         for index in selected[dataset.name]
     ]
     item_count = len(items)
-    cycle_count = len(
-        {
-            (summarizer.model, canonical_json(summarizer.model_args))
-            for summarizer in summarizers
-        }
-    )
-    console.plan(
-        "generate",
-        f"{len(summarizers)} "
-        f"{_plural(len(summarizers), 'summarizer', 'summarizers')}, "
-        f"{item_count} {_plural(item_count, 'item', 'items')}, "
-        f"{cycle_count} "
-        f"{_plural(cycle_count, 'server cycle', 'server cycles')}",
-    )
+    if print_plan:
+        console.plan(
+            "generate", generate_plan_text(datasets, selected, summarizers)
+        )
 
     surfaces = {}
     pending = []
@@ -173,14 +190,19 @@ def run_generate(store, console, resolved, datasets, selected, summarizers, clie
     )
 
 
-def generate_hook(resolved, datasets, selected, summarizers, client, cycles):
+def generate_hook(
+    resolved, datasets, selected, summarizers, client, cycles,
+    print_plan=True,
+):
     """The generate(store, console) hook for score: scoring.py calls it
-    with an already-open store; ticket 08 passes it as `generate=`."""
+    with an already-open store; ticket 08 passes it as `generate=` with
+    print_plan=False because score() prints the plan(generate) line
+    itself (before the plan(score) line, before the hook runs)."""
 
     def generate(store, console):
         run_generate(
             store, console, resolved, datasets, selected, summarizers, client,
-            cycles,
+            cycles, print_plan=print_plan,
         )
 
     return generate

@@ -498,11 +498,12 @@ def score(
     """Full score run; prints everything itself. Pre-effect (scorers,
     summarizers, judge credential preflight, infeasible warns, the
     no-scorable-pairs note) before the store, then the plan (resume
-    pre-scan) and the plan(score) line BEFORE the generate hook if any (a
-    stage-1 RuntimeFailure propagates before any scoring), then the metrics
-    phase (a failure propagates before any judge call), then the judges
-    phase; the store closes in a finally; the generation and no-scorers
-    notes and done(score) print after close. Returns (scorers, plan,
+    pre-scan), the plan(generate) line when a generate hook is given,
+    and the plan(score) line -- all BEFORE the hook (a stage-1 failure
+    propagates before any scoring), then the metrics phase (a failure
+    propagates before any judge call), then the judges phase; the store
+    closes in a finally; the generation and no-scorers notes and
+    done(score) print after close. Returns (scorers, plan,
     metrics_result, judges_result)."""
     scorers = resolve_scorers(resolved, metrics_flag, judges_flag)
     summarizers = select_summarizers(resolved, *summarizer_selection)
@@ -525,7 +526,10 @@ def score(
             summarizers,
         )
         if generate is not None:
-            generate(store, console)
+            from .generate import generate_plan_text
+            console.plan(
+                "generate", generate_plan_text(datasets, selected, summarizers)
+            )
         scorer_text = (
             "0 metric(s), 0 judge(s)"
             if plan.metrics == 0 and plan.judges == 0
@@ -538,6 +542,8 @@ def score(
             f"{plan.to_run} to run, {plan.already_scored} already scored | "
             f"{plan.infeasible_pairs} infeasible",
         )
+        if generate is not None:
+            generate(store, console)
         metrics_result = run_metrics_phase(
             store, resolved, scorers, infeasible, datasets, selected,
             summarizers, console,
