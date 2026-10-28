@@ -2,7 +2,7 @@
 
 ## Notes
 
-- Effort: build `evalapp` per `spec.md`; tickets in `issues/`. Done: 01–08, 06a–06c, 07. Open: 09, 10, 11.
+- Effort: build `evalapp` per `spec.md`; tickets in `issues/`. Done: 01–09, 06a–06c, 07. Open: 10, 11.
 - Planned implementation order: 06a → 06b → 06c → 05c → 05d → 08 → 09 → 10 → 11 (satisfies every `Blocked by` edge).
 - Ticket 06 was split into 06a–06c on 2026-10-27 (a single session looped on the combined scope); the split parts carry the original ticket's `Blocked by` edges.
 - The scoring module (06a–06c) has no CLI surface of its own: behavior is proven by unit tests through the fake endpoint client (05a); ticket 08 does the CLI wiring, and 06 exposes the hook interface in the `cli.py` `_score` stub.
@@ -174,7 +174,7 @@ score --server-port 8081
 3. `--generate` two-stage: plan interleaving (plan(generate) before plan(score), hook in between), `generate_plan_text` helper + `print_plan=False` hook (plan(generate) appears exactly once), stage-1 FailFastAbort ⇒ no scoring (assert phases didn't run), 05c/05d behavior preserved (default `print_plan=True`).
 4. Resume: re-run skips committed (item, scorer) units, fake client sees no calls on them, remainder only; `to_run`/`already scored` counts correct.
 5. Integration via fixture `--serve` (ports ≥18090, one port per server run; 05b owns 18081/9090/7070/8081, 05d used 18090 — pick fresh, e.g. 18100+; TIME_WAIT ⇒ distinct ports per test): score smoke through the real endpoint (plan/done lines byte-exact, exit 0, store rows: metric_evaluations/judge_evaluations/reference_summaries), `score --generate` two-stage end-to-end, judge-reject (failed count, exit 0), judge-500 fail-fast exit 1 naming item+judge (use `--fail-after`), resume-after-partial-failure (re-run on a different port, no calls on committed units).
-6. Close 08: all **12** boxes in `issues/08-score.md` + `- 2026-10-28 — implemented: …` under `## Comments` (mention final test count); map Notes → `Done: 01–08, 06a–06c, 07. Open: 09, 10, 11.`; commit `docs(scratch): ticket 08 — close`.
+6. Close 08: all **12** boxes in `issues/08-score.md` + `- 2026-10-28 — implemented: …` under `## Comments` (mention final test count); map Notes → `Done: 01–09, 06a–06c, 07. Open: 10, 11.`; commit `docs(scratch): ticket 08 — close`.
 
 ### Ticket 09 (settled 2026-10-28)
 
