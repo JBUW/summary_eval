@@ -254,3 +254,26 @@ def test_judge_call_rejected_parse_returns_none():
     )
 
     assert scores is None
+
+
+@pytest.mark.parametrize(
+    ("outcome", "detail"),
+    [
+        (HttpError(500, "boom"), "HTTP 500"),
+        (EmptyCompletionError(), "empty completion"),
+        (RequestTimeout(300.0), "timeout after 300.0s"),
+        (EndpointError("connection failed: refused"),
+         "connection failed: refused"),
+    ],
+)
+def test_judge_call_failure_raises_detail_only_runtime_failure(
+    outcome, detail
+):
+    fake = _FakeTransport()
+    fake.enqueue(outcome)
+
+    with pytest.raises(RuntimeFailure) as excinfo:
+        judge_call(_client(fake), "j", _judge_entry(), "T-0", "G-0", None)
+
+    assert str(excinfo.value) == detail
+    assert excinfo.value.__cause__ is outcome
