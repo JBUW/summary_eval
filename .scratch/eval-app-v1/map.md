@@ -2,7 +2,7 @@
 
 ## Notes
 
-- Effort: build `evalapp` per `spec.md`; tickets in `issues/`. Done: 01–05b, 06a–06c, 07. Open: 05c, 05d, 08, 09, 10, 11.
+- Effort: build `evalapp` per `spec.md`; tickets in `issues/`. Done: 01–05c, 06a–06c, 07. Open: 05d, 08, 09, 10, 11.
 - Planned implementation order: 06a → 06b → 06c → 05c → 05d → 08 → 09 → 10 → 11 (satisfies every `Blocked by` edge).
 - Ticket 06 was split into 06a–06c on 2026-10-27 (a single session looped on the combined scope); the split parts carry the original ticket's `Blocked by` edges.
 - The scoring module (06a–06c) has no CLI surface of its own: behavior is proven by unit tests through the fake endpoint client (05a); ticket 08 does the CLI wiring, and 06 exposes the hook interface in the `cli.py` `_score` stub.
