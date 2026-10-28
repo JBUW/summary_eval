@@ -8,11 +8,12 @@
 
 Series note (06a–06c): ticket 06 (Scoring pipeline) is split into these three parts; implement them in sequence, each self-contained and committing on its own.
 
-- [ ] One call per generation scores several qualities (one nullable value per quality, never cross-averaged, no composite).
-- [ ] The rubric is rendered with its placeholders and the raw response passes through the parse seam (ticket 07).
-- [ ] Nothing extractable ⇒ `warn:` + no row + continue.
-- [ ] Transport/HTTP failure or empty completion ⇒ fail-fast exit 1 naming the item and the judge.
-- [ ] Unit tests run through the fake endpoint client (ticket 05a) and stop at the parse seam: rendering, transport handling, and commits are asserted with no real server and no network.
+- [x] One call per generation scores several qualities (one nullable value per quality, never cross-averaged, no composite).
+- [x] The rubric is rendered with its placeholders and the raw response passes through the parse seam (ticket 07).
+- [x] Nothing extractable ⇒ `warn:` + no row + continue.
+- [x] Transport/HTTP failure or empty completion ⇒ fail-fast exit 1 naming the item and the judge.
+- [x] Unit tests run through the fake endpoint client (ticket 05a) and stop at the parse seam: rendering, transport handling, and commits are asserted with no real server and no network.
 
 ## Comments
 - 2026-10-27 — split from ticket 06 (Scoring pipeline: scorer resolution, feasibility, metrics + judges phases) into 06a–06c.
+- 2026-10-28 — implemented per the settled map design (slices `3dd9e8e`→`94b1088`): render_judge_messages (single-pass placeholder rendering), judge_call (one call scores all qualities; rejected parse ⇒ None; EndpointError ⇒ detail-only RuntimeFailure), judges-phase failure wrap naming the item and the judge, phase integration through the real handler; full suite green.
