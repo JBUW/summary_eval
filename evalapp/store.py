@@ -355,6 +355,55 @@ class Store:
         ).fetchone()
         return row[0] if row else None
 
+    def model_sha_by_name(self, name):
+        row = self._execute(
+            "SELECT model_sha256 FROM models WHERE name = ? "
+            "ORDER BY updated_at DESC, model_sha256 LIMIT 1",
+            (name,),
+        ).fetchone()
+        return row[0] if row else None
+
+    def template_sha_by_name(self, name):
+        row = self._execute(
+            "SELECT template_sha256 FROM prompt_templates WHERE name = ? "
+            "ORDER BY updated_at DESC, template_sha256 LIMIT 1",
+            (name,),
+        ).fetchone()
+        return row[0] if row else None
+
+    def generations_for(self, model_sha, model_args, template_sha, gen_params):
+        if model_sha is None or template_sha is None:
+            return []
+        return self._execute(
+            "SELECT generation_sha256, transcript_sha256 FROM generations "
+            "WHERE model_sha256 = ? AND model_args = ? "
+            "AND template_sha256 = ? AND gen_params = ?",
+            (model_sha, model_args, template_sha, gen_params),
+        ).fetchall()
+
+    def metric_values(self, metric_name, generation_shas):
+        if not generation_shas:
+            return []
+        placeholders = ",".join("?" for _ in generation_shas)
+        rows = self._execute(
+            "SELECT value FROM metric_evaluations "
+            f"WHERE metric_name = ? AND generation_sha256 IN ({placeholders})",
+            (metric_name, *generation_shas),
+        ).fetchall()
+        return [row[0] for row in rows]
+
+    def judge_quality_values(self, judge_sha, quality, generation_shas):
+        if not generation_shas:
+            return []
+        placeholders = ",".join("?" for _ in generation_shas)
+        rows = self._execute(
+            f"SELECT {quality} FROM judge_evaluations "
+            f"WHERE judge_sha256 = ? AND generation_sha256 IN ({placeholders}) "
+            f"AND {quality} IS NOT NULL",
+            (judge_sha, *generation_shas),
+        ).fetchall()
+        return [row[0] for row in rows]
+
     def get_metric_evaluation(self, sha):
         row = self._execute(
             "SELECT value FROM metric_evaluations WHERE metric_evaluation_sha256 = ?",

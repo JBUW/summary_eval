@@ -346,11 +346,11 @@ def score_plan(store, resolved, scorers, infeasible, datasets, selected, summari
                 for name in scorers.judges:
                     if (name, dataset.name) in infeasible:
                         continue
-                    judge_sha = judge_shas.get(name)
-                    if judge_sha is None:
-                        judge_sha = _judge_sha(resolved, name)
-                        judge_shas[name] = judge_sha
-                    if store.has_judge_evaluation(judge_sha, generation_sha):
+                    judge_entry_sha = judge_shas.get(name)
+                    if judge_entry_sha is None:
+                        judge_entry_sha = judge_sha(resolved, name)
+                        judge_shas[name] = judge_entry_sha
+                    if store.has_judge_evaluation(judge_entry_sha, generation_sha):
                         already_scored += 1
                     else:
                         to_run += 1
@@ -364,7 +364,7 @@ def score_plan(store, resolved, scorers, infeasible, datasets, selected, summari
     )
 
 
-def _judge_sha(resolved, name):
+def judge_sha(resolved, name):
     entry = resolved["judges"][name]
     return judge_id(
         entry["model_name"], entry["gen_params"], entry["system_content"],
@@ -459,12 +459,12 @@ def run_judges_phase(
                         if judge_entry["requires_reference"]
                         else None
                     )
-                    judge_sha = judge_shas.get(name)
-                    if judge_sha is None:
-                        judge_sha = _judge_sha(resolved, name)
-                        judge_shas[name] = judge_sha
+                    judge_entry_sha = judge_shas.get(name)
+                    if judge_entry_sha is None:
+                        judge_entry_sha = judge_sha(resolved, name)
+                        judge_shas[name] = judge_entry_sha
                     unit_sha = judge_evaluation_id(
-                        judge_sha, generation_sha, reference_sha
+                        judge_entry_sha, generation_sha, reference_sha
                     )
                     if store.get_judge_evaluation(unit_sha) is not None:
                         skipped += 1
@@ -494,7 +494,7 @@ def run_judges_phase(
                                 entry.get("entry_id"), index,
                             )
                         store.upsert_judge_evaluation(
-                            judge_sha, generation_sha, reference_sha,
+                            judge_entry_sha, generation_sha, reference_sha,
                             scores.get("factual_correctness"),
                             scores.get("completeness"),
                             scores.get("conciseness"),

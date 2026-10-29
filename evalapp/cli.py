@@ -21,7 +21,8 @@ from .model_server import (
     ServerCycles,
     port_is_free,  # re-exported for check_static
 )
-from .scoring import Flag, score, sweep
+from .report import apply_blind_sample, report
+from .scoring import Flag, resolve_scorers, score, sweep
 from .selection import resolve_selection
 from .summarizers import select_summarizers
 from .store import Store
@@ -79,7 +80,7 @@ def build_parser():
         if command == "check":
             sub.add_argument("--probe-judges", action="store_true", default=False)
             sub.add_argument("--create-store", action="store_true", default=False)
-        if command in ("generate", "score"):
+        if command in ("generate", "score", "report"):
             sub.add_argument("--summarizer", nargs="+", action="append", default=None)
             sub.add_argument("--model", nargs="+", action="append", default=None)
             sub.add_argument(
@@ -91,6 +92,15 @@ def build_parser():
             sub.add_argument("--no-metrics", action="store_true", default=False)
             sub.add_argument("--no-judges", action="store_true", default=False)
             sub.add_argument("--generate", action="store_true", default=False)
+        if command == "report":
+            sub.add_argument("--metrics", nargs="+", action="append", default=None)
+            sub.add_argument("--judges", nargs="*", action="append", default=None)
+            sub.add_argument("--no-metrics", action="store_true", default=False)
+            sub.add_argument("--no-judges", action="store_true", default=False)
+            sub.add_argument("--json", action="store_true", default=False)
+            sub.add_argument("--by", choices=("dataset",), default=None)
+            sub.add_argument("--blind-sample", type=int, default=None)
+            sub.add_argument("--csv", default=None)
         if command == "sweep":
             for flag in (
                 "--select",
@@ -131,21 +141,6 @@ def _tokens(value):
     if value is None:
         return None
     return tuple(token for group in value for token in group)
-
-
-def _run_command(command, args, console):
-    config = _load(args, console)
-    declared = validate_datasets(config)
-    datasets = {name: load_dataset(name, decl) for name, decl in declared.items()}
-    scope = resolve_selection(args.select, datasets)
-    if not any(scope.values()):
-        console.note("no entries in scope; nothing to do")
-        return 0
-    for name, decl in declared.items():
-        indices = scope[name]
-        if indices:
-            console.plan(command, f"{name} {len(indices)} entries")
-    return 0
 
 
 def _generate(args, console):
@@ -260,6 +255,52 @@ def _score(args, console):
     return 0
 
 
+def _report(args, console):
+    if args.csv is not None and args.json:
+        raise SpecError("--csv and --json are mutually exclusive")
+    if args.blind_sample is not None and args.blind_sample < 0:
+        raise SpecError(
+            f"invalid --blind-sample {args.blind_sample} (must be >= 0)"
+        )
+    config = _load(args, console)
+    declared = validate_datasets(config)
+    datasets = {name: load_dataset(name, decl) for name, decl in declared.items()}
+    scope = resolve_selection(args.select, datasets)
+    scope = apply_blind_sample(scope, args.blind_sample)
+    if not any(scope.values()):
+        console.note("no entries in scope; nothing to do")
+        return 0
+    errors, resolved = validate_config(config, console)
+    if errors:
+        for message in errors:
+            console.error(message)
+        return 2
+    metrics_flag = (Flag(no=args.no_metrics) if args.metrics is None
+                    else Flag(value=_tokens(args.metrics), no=args.no_metrics))
+    if args.judges is None:
+        judges_flag = Flag(no=args.no_judges)
+    else:
+        tokens = _tokens(args.judges)
+        judges_flag = (Flag(value="bare", no=args.no_judges) if not tokens
+                       else Flag(value=tokens, no=args.no_judges))
+    scorers = resolve_scorers(resolved, metrics_flag, judges_flag)
+    summarizers = select_summarizers(
+        resolved, _tokens(args.summarizer), _tokens(args.model),
+        _tokens(args.prompt_template),
+    )
+    for name, decl in declared.items():
+        indices = scope[name]
+        if indices:
+            console.plan("report", f"{name} {len(indices)} entries")
+    report(
+        resolved, effective_store_path(config, args.store), datasets, scope,
+        summarizers, scorers, console, by_dataset=args.by == "dataset",
+        json_out=args.json, csv_path=args.csv,
+    )
+    return 0
+
+
+
 def _clear(args, console):
     config = _load(args, console)
     store_path = effective_store_path(config, args.store)
@@ -344,7 +385,7 @@ _HANDLERS = {
     "generate": _generate,
     "score": _score,
     "sweep": _sweep,
-    "report": lambda args, console: _run_command("report", args, console),
+    "report": _report,
     "clear": _clear,
 }
 
