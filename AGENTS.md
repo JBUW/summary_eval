@@ -23,6 +23,14 @@ Per-effort decisions live in the effort map `.scratch/<feature>/map.md` (Notes /
 - A ticket is done when it is committed. Resume a ticket with no new commit by writing the smallest code slice first, then re-reading only what a failing test names.
 - `bin/check` (the pytest suite) green + commit = ticket done.
 
+### Loop self-awareness
+
+Progress must survive compaction and a stall must be visible, so a restart never loses work or repeats a dead end:
+
+- Commit each green slice the moment it is green; a slice that is not committed is not done.
+- Re-read the file's exact bytes before re-applying a failed patch.
+- The same test failing the same way twice is a loop: stop iterating, re-read the ticket and the map, check the assumption the code was built on, and re-plan the smallest slice.
+
 ## Git
 
 ### Commit identity
