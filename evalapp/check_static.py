@@ -1,5 +1,6 @@
 import os
 
+from . import check_live
 from . import metrics
 from .cli import _parse_json_object, port_is_free
 from .config import (
@@ -39,6 +40,7 @@ def run_check(args, console):
             console.error(message)
         return 2
     _handle_store(args, config, console)
+    check_live.run_live(args, config, resolved, console)
     return 0
 
 
