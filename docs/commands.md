@@ -149,21 +149,46 @@ normal shared open path applies (bootstrap when absent: `note: created empty sto
 <path>`). With ≥ 1 table the exact schema check runs either way. Probe results are
 discarded; `check` never commits anything.
 
-**Live phase (only if static is clean).** Local only, fail-fast (exit 1, failing target
-+ error + last ~20 server-log lines). Per distinct `(model, model_args)` in config
-order: spawn the model server → wait for readiness (`startup_timeout_s`) → print
-`/props` informationally → run one probe completion per distinct resolved summarizer
-(deduplicated; a fixed short probe transcript constant in the code, never dataset
-content — no dataset content leaves the machine) → context-adequacy probe for the
-longest in-scope transcript per dataset (`POST /tokenize`, chars/3 fallback; over ⇒
-`warn:` only) → stop; the port is reused between cycles.
+**Live phase (only if static is clean).** Local only, fail-fast. Per distinct
+`(model, model_args)` pair in configuration order: spawn the model server → wait for
+readiness (bounded by `startup_timeout_s`) → print the `/props` payload informationally
+(`note: model server build: <json>`) and make one trivial preflight completion (the
+preflight prompt is never counted in the fixture server's `--completion-log`) → run one
+probe completion per distinct resolved summarizer of the pair (deduplicated by template
+and gen_params; a fixed short probe transcript constant in the code, never dataset
+content — no dataset content leaves the machine) → after the FIRST pair's probes only, a
+context-adequacy probe per dataset in configuration order (empty datasets are skipped;
+the longest transcript by char length; a `POST /tokenize` call only when the effective
+`server.args` `ctx-size` is a positive int — bool excluded, so an absent `ctx-size`
+means no tokenize call at all; any tokenize failure falls back to `len(text) // 3` and
+never fails the run) → stop; the port is reused between cycles. Over ⇒ `warn:` only:
+`warn: dataset '<name>': longest transcript (<N> tokens) exceeds context size (<ctx>)`,
+or on the chars/3 fallback,
+`warn: dataset '<name>': longest transcript (~<N> tokens estimated from chars/3)
+exceeds context size (<ctx>)`.
 
-`--probe-judges` is opt-in, default off (no external/paid call by default). With it: one
-trivial completion per judge, rubric rendered with placeholder example values only,
-response run through the real parser; nothing usable or a transport failure ⇒ exit 1.
-A judge whose `api_key_env` variable is unset/empty ⇒ static failure (exit 2).
+A failure anywhere in a cycle fails fast with exit 1: one error line naming the failing
+target — `error: model '<name>': <detail>` for a readiness or preflight failure,
+`error: summarizer '<name>': <detail>` for a probe failure (a transport error renders
+as e.g. `HTTP 500 from model server`) — followed by the last 20 lines of the server
+log, raw, no prefix.
 
-Exit 0 = static clean and all live probes OK (warnings allowed).
+`--probe-judges` is opt-in, default off (no external/paid call by default). With it,
+after the model cycles: one trivial completion per judge in configuration order, the
+rubric rendered with placeholder example values only ("Example transcript for the
+check judge probe.", "Example summary for the check judge probe.", and — only when the
+judge's `requires_reference` is true — "Example reference for the check judge probe."),
+the response run through the real parser; nothing usable ⇒
+`error: judge '<name>': no usable values in probe response`, exit 1; a transport
+failure ⇒ `error: judge '<name>': <detail>`, exit 1. Judge failures get no server-log
+tail (no local server is involved). A judge whose `api_key_env` variable is unset/empty
+⇒ static failure (exit 2).
+
+Exit 0 = static clean and all live probes OK (warnings allowed). When the live phase
+runs at all (at least one model pair, or `--probe-judges`), the last line is
+`done(check): <n> server cycle(s), <m> summarizer probe(s), <k> judge probe(s)`
+(pluralized per count, e.g. `done(check): 3 server cycles, 3 summarizer probes, 0
+judge probes`); with no pairs and no `--probe-judges` there is no done line.
 
 Scorer discovery (static; printed regardless of store presence, disjoint groups):
 
@@ -192,7 +217,12 @@ Against the repo's config.json (assuming the files it references exist):
     judges (configured: 1):
       default_judges:                openrouter-llama-3-70b
       configured, not named there:   (none)
+    plan(check): 2 datasets
     note: no store at evalstore.sqlite3
+    note: model server build: {...}
+    note: model server build: {...}
+    note: model server build: {...}
+    done(check): 3 server cycles, 3 summarizer probes, 0 judge probes
     exit 0
 
 ## generate
