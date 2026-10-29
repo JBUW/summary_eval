@@ -397,3 +397,158 @@ conftest/cross-test imports; helpers copied verbatim from the 08 files):**
    impossible: zero scorers ⇒ zero-rows note; accepted SHALLOWLY per the
    ticket's own note); map Notes → `Done: 01–10, 06a–06c, 07. Open: 11.`;
    commit `docs(scratch): ticket 10 — close`; ff-merge `ticket/10`.
+### Ticket 11 (settled 2026-10-29)
+
+Scope: the `check` live phase + `--probe-judges`; no store footprint, no
+new flags (`--probe-judges` and all `--server-*` are already wired).
+
+**Decision A — context adequacy: once per dataset, after the FIRST pair's
+probes.** spec.md places it in the per-pair sequence; the spec's
+Out-of-Scope entry says probed **once per dataset**; per-pair would emit
+N identical warns (ctx-size is a global server arg; token count is
+model-independent) — a bug. Run it after the first pair's summarizer
+probes (the position the spec's cycle sequence gives in cycle 1), skip in
+cycles 2..N. "In-scope" = all configured datasets (`check` has no
+`--select`). Per dataset in config order: skip if 0 entries; longest
+`entry["transcript"]` by char length; call `client.tokenize(server.root,
+text)` **only when the effective `spec["args"].get("ctx-size")` is a
+positive int (bool excluded)** — no ctx-size ⇒ no tokenize call at all
+(also avoids 404s on the fake server in integration tests). Any
+`EndpointError` from tokenize ⇒ fallback `len(text)//3`, never fails the
+run. Warn only when `tokens > ctx`.
+
+**Decision B — the done line is CONDITIONAL.** The existing byte-exact
+exit-0 check tests (e.g. `tests/test_check_port_store.py::test_free_config_port_passes`)
+assert exactly `STANDARD_DISCOVERY + ["plan(check): 2 datasets",
+"note: no store at store.db"]`; no check test uses `add_summarizer_section`
+(grep-verified), so all have 0 pairs. Emit the done line only when the
+live phase actually ran: `pairs or args.probe_judges`. "3-count shape even
+at zero" = the line always has all three counts (e.g. `1 server cycle, 1
+summarizer probe, 0 judge probes`), not an all-zero line. Keeps every
+current check test green unmodified.
+
+**Decision C — judge `gen_params` normalization.** `judge_call` indexes
+`judge_entry["gen_params"]` directly, but `validate_config` stores the RAW
+entry (absent `gen_params` ≡ `{}` per docs/config.md). A judge configured
+without `gen_params` would KeyError. Latent pre-existing gap on the score
+path — do NOT fix there; in `check_live` pass a normalized copy
+`{**entry, "gen_params": entry.get("gen_params") or {}}` to `judge_call`.
+
+**Module layout.**
+
+- New `evalapp/check_live.py` (keep `check_static.py` the pure linter).
+  `run_live(args, config, resolved, console)`:
+  - `pairs = distinct_model_pairs(resolved)`; `client = create_client()
+    if (pairs or args.probe_judges) else None` — referenced via MODULE
+    ATTRIBUTES AT CALL TIME (unit tests monkeypatch
+    `evalapp.check_live.create_client` / `evalapp.check_live.ServerCycles`;
+    no import-time alias).
+  - `cycles = ServerCycles(spec, {name: m["path"] for name, m in
+    resolved["models"].items()}, client, console)` only when pairs;
+    `spec = effective_server_spec(config, args.server_command,
+    args.server_args, args.server_env, args.server_port,
+    args.server_startup_timeout)`; the build note comes free from
+    `cycles.ensure` → `_readiness`.
+  - Per pair in order: `server = cycles.ensure(model, model_args)`
+    (fail-fast target `model '<model>'` on `(EndpointError,
+    RuntimeFailure)`; SpecError from prevalidate propagates as exit 2,
+    same as generate) → for each **distinct summarizer of that pair**
+    (dedup key `(model, canonical_json(model_args), prompt_template,
+    canonical_json(gen_params))`, first wins, config order; filter
+    `resolved["summarizers"].items()` by pair key): `template =
+    load_template(name, resolved["prompt_templates"][name])`
+    (RuntimeFailure ⇒ plain exit 1, **no tail**); messages =
+    `[{"role":"system","content":template.system_content}]` when
+    non-empty else `[]`, + `[{"role":"user","content":
+    template.user_prefix + PROBE_TRANSCRIPT}]`; `client.complete(
+    server.root, model, messages, gen_params=<the summarizer's resolved
+    gen_params>)` (fail-fast target `summarizer '<name>'`, wraps
+    `(EndpointError, RuntimeFailure)`); count `+= 1`.
+  - After pair 1's probes: context adequacy per Decision A; warn
+    wordings `warn: dataset '<name>': longest transcript (<N> tokens)
+    exceeds context size (<ctx>)` / `... (~<N> tokens estimated from
+    chars/3) exceeds context size (<ctx>)`.
+  - Judge probes only when `args.probe_judges` (after the model cycles;
+    no local server involved): per judge in config order `judge_call(
+    client, name, <normalized entry>, JUDGE_EXAMPLE_TRANSCRIPT,
+    JUDGE_EXAMPLE_SUMMARY, JUDGE_EXAMPLE_REFERENCE if
+    entry["requires_reference"] else None)`; `RuntimeFailure` ⇒
+    `error: judge '<name>': <detail>` + `FailFastAbort()` (**no log
+    tail** — remote); `None` (parser rejected) ⇒ `error: judge '<name>':
+    no usable values in probe response` + `FailFastAbort()`; count `+= 1`.
+  - Local fail-fast shape (mirrors `generate.py:140-162` minus the
+    resume note): `detail = f"{exc} from model server" if isinstance(exc,
+    EndpointError) else str(exc)`; `console.error(f"{target}: {detail}")`;
+    each `cycles.log_tail(20)` line via `console.log`;
+    `raise FailFastAbort()`; `cycles.stop()` in `finally` (also on
+    success).
+  - Done line (only when `pairs or args.probe_judges`): `done(check): <n>
+    {server cycle|server cycles}, <m> {summarizer probe|summarizer
+    probes}, <k> {judge probe|judge probes}`; local `_plural(count,
+    singular, plural)` (generate.py's is private — duplicate the 3-liner,
+    repo style).
+  - Constants in code: `PROBE_TRANSCRIPT` (fixed short probe sentence,
+    never dataset content), `JUDGE_EXAMPLE_TRANSCRIPT`,
+    `JUDGE_EXAMPLE_SUMMARY`, `JUDGE_EXAMPLE_REFERENCE` (e.g. "Example
+    transcript for the check judge probe.").
+- Wiring: `check_static.py` — add `from . import check_live` (no import
+  cycle: check_live imports model_server/endpoint_client/judge_call/
+  templates/identities/datasets/errors only) and insert
+  `check_live.run_live(args, config, resolved, console)` after the
+  `_handle_store(args, config, console)` line, before `return 0`.
+  Static-failure-skip is structural (all exit-2 paths return earlier).
+
+**TDD slices (red first, commit EACH green slice; ASCII-only docstring;
+`import harness  # noqa: F401` right after the module docstring; no
+conftest/cross-test imports; helpers copied verbatim where noted):**
+1. `tests/test_check_live.py` — units via `harness.run_cli(["check", ...],
+   cwd=ws)` with pytest-monkeypatched `evalapp.check_live.create_client` /
+   `evalapp.check_live.ServerCycles` fakes (fake client records
+   `complete`/`tokenize` calls; fake cycles records `ensure`/`stop`,
+   returns an object with `.root`): no models ⇒ exit 0, no
+   client/cycles, **no done line**, output identical to today; pair order
+   + summarizer dedup + probe message shape (system only when non-empty,
+   user = `user_prefix + PROBE_TRANSCRIPT`, gen_params passthrough);
+   context adequacy (tokenize once per dataset on the longest transcript;
+   warn over; no warn under / ctx-size absent / non-int / bool; chars/3
+   fallback + `~` wording on EndpointError); static-fail skips live
+   (exit 2, fakes never called — e.g. delete a dataset file); static-clean
+   runs live. → minimal `check_live` + `check_static` wiring → green →
+   commit `feat(check): ticket 11 — live phase: model cycles + context
+   adequacy`.
+2. Same file: ensure RuntimeFailure ⇒ `error: model 'm': ...` + 3 tail
+   lines + `stop()` called; probe EndpointError ⇒ `error: summarizer 's':
+   HTTP 500 from model server` + tail; judge probes: parseable ⇒ ok +
+   counted; rejected ⇒ `no usable values in probe response`; transport ⇒
+   `error: judge 'j': <detail>`; `--probe-judges` off ⇒ zero judge calls;
+   `requires_reference: false` ⇒ `{reference}` literal in sent messages;
+   judge entry without `gen_params` ⇒ no KeyError (Decision C). → commit
+   `feat(check): ticket 11 — fail-fast + --probe-judges`.
+3. `tests/test_check_11_integration.py` (fixture serve mode; helpers
+   copied verbatim from `tests/test_generate_05d_integration.py`:
+   `FIXTURE`, `_server_section`, `_workspace`, `_run`, `_user_contents`,
+   `_counts`; ports **18211+** — 18200–18210 ticket 10, 18081/9090/7070/
+   8081 05b, 18090–18094 05d): success (exit 0, exact lines = 6 discovery
+   + `plan(check): 2 datasets` + `note: no store at store.db` +
+   BUILD_NOTE + `done(check): 1 server cycle, 1 summarizer probe, 0 judge
+   probes`; completion log `== ["completion 1: " + <probe user content>]`);
+   failure `--fail-after 0` (exit 1: error line + 3 raw tail lines, **no
+   done line**); static-fail skips live (exit 2, server section stays
+   `/bin/true`, no live output). → commit `test(check): ticket 11 —
+   integration`.
+4. Update `docs/commands.md` §check: Live phase paragraph with the exact
+   settled strings (fail-fast targets, warn wordings, done line, ctx-size
+   source, tokenize gating + chars/3 fallback, judge example values,
+   `requires_reference` governs `{reference}`, parser-rejection exit 1);
+   AND the stale "Against the repo's config.json" example (~line 188) → 6
+   discovery lines, `plan(check): 2 datasets`, `note: no store at
+   evalstore.sqlite3`, three `note: model server build: {...}` lines,
+   `done(check): 3 server cycles, 3 summarizer probes, 0 judge probes`,
+   exit 0. Close the ticket: tick all 7 boxes + `- 2026-10-29 —
+   implemented: ...` under `## Comments` in `issues/11-check-live-phase.md`;
+   map Notes first bullet → `Done: 01–11, 06a–06c, 07.` (drop "Open: 11");
+   commit `docs(scratch): ticket 11 — close`. Escalated ff-merge: `git
+   merge-base --is-ancestor integrate/eval-app-v1 ticket/11`, then `git
+   checkout integrate/eval-app-v1 && git merge --ff-only ticket/11`.
+   Completion audit (all tickets closed, full suite green out-of-sandbox,
+   branch current). **Do NOT push.**
