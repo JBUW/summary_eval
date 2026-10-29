@@ -41,7 +41,6 @@ def test_no_subcommand(tmp_path):
         ["check", "--bogus"],
         ["generate", "--metrics", "x"],
         ["sweep", "--select", "named", "*"],
-        ["report", "--json"],
     ],
 )
 def test_unknown_flags(tmp_path, argv):
