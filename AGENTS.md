@@ -31,6 +31,10 @@ Progress must survive compaction and a stall must be visible, so a restart never
 - Re-read the file's exact bytes before re-applying a failed patch.
 - The same test failing the same way twice is a loop: stop iterating, re-read the ticket and the map, check the assumption the code was built on, and re-plan the smallest slice.
 
+## Environment
+
+Container quirks (broken `ps`, sandboxed sockets, no GitHub credentials) and when to run the full `--with-sockets` suite: `docs/agents/environment.md`.
+
 ## Git
 
 ### Commit identity
