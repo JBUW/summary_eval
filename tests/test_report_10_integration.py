@@ -10,10 +10,13 @@ them).
 """
 import json
 import os
+import pytest
 
 import harness  # noqa: F401  (puts the repo root on sys.path)
 
 from evalapp.store import Store
+
+pytestmark = pytest.mark.sockets
 
 FIXTURE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),

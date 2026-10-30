@@ -18,7 +18,7 @@ import evalapp.check_live as check_live
 from evalapp.endpoint_client import EndpointError
 from evalapp.errors import RuntimeFailure
 
-PORT = 18111
+PORT = 18500
 ROOT = f"http://127.0.0.1:{PORT}"
 
 

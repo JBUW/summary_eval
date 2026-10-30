@@ -39,4 +39,4 @@ Agent commits must always pass the identity explicitly: `git -c user.name="Codex
 
 ### Pre-commit hook
 
-Commits are gated by `hooks/pre-commit`, which runs `bin/check`; a red suite aborts the commit. A fresh clone must activate it first: `git config core.hooksPath hooks`. Bypass only when deliberately committing red: `git commit --no-verify`.
+Commits are gated by `hooks/pre-commit`, which runs `bin/check`; a red suite aborts the commit. The default gate excludes `sockets`-marked tests (real local server sockets); run the full suite with `bin/check --with-sockets`. A fresh clone must activate it first: `git config core.hooksPath hooks`. Bypass only when deliberately committing red: `git commit --no-verify`.

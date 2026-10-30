@@ -11,10 +11,13 @@ sockets on its port, and the port pre-scan probe must never see them.
 """
 import json
 import os
+import pytest
 
 import harness  # noqa: F401  (puts the repo root on sys.path)
 
 from evalapp.check_live import PROBE_TRANSCRIPT
+
+pytestmark = pytest.mark.sockets
 
 FIXTURE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),

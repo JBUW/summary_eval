@@ -3,4 +3,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-exec pytest "$@"
+if [[ "${1:-}" == "--with-sockets" ]]; then
+  shift
+  exec pytest "$@"
+fi
+
+exec pytest -m "not sockets" "$@"

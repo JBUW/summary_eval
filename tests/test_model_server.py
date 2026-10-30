@@ -12,6 +12,8 @@ from evalapp.cli import main
 from evalapp.endpoint_client import EndpointError, HttpError
 from evalapp.errors import RuntimeFailure, SpecError
 
+pytestmark = pytest.mark.sockets
+
 FIXTURE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "fixtures", "fake_model_server.py"
 )
