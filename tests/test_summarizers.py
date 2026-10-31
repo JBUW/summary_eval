@@ -1,7 +1,12 @@
 import pytest
 
-from evalapp.errors import SpecError
-from evalapp.summarizers import Summarizer, select_summarizers
+from evalapp.errors import RuntimeFailure, SpecError
+from evalapp.identities import model_id
+from evalapp.summarizers import (
+    Summarizer,
+    SummarizerInputsCache,
+    select_summarizers,
+)
 
 
 def _resolved():
@@ -157,3 +162,37 @@ def test_unknown_token_roster_none_configured():
             model_names=("zzz",),
         )
     assert str(excinfo.value) == "unknown model 'zzz' (none configured)"
+
+
+def _inputs_resolved(tmp_path, model_bytes=b"model-bytes"):
+    model_path = tmp_path / "m.bin"
+    model_path.write_bytes(model_bytes)
+    template_path = tmp_path / "t.json"
+    template_path.write_text('{"system_content": "S", "user_template": "U"}')
+    return {
+        "models": {"m": {"path": str(model_path)}},
+        "prompt_templates": {"t": str(template_path)},
+    }
+
+
+def test_inputs_model_hash_is_sha256_of_whole_file(tmp_path):
+    model_bytes = bytes(range(256)) * 9000
+    resolved = _inputs_resolved(tmp_path, model_bytes)
+    inputs = SummarizerInputsCache(resolved).inputs(
+        Summarizer("s", "m", {}, "t", {})
+    )
+    assert inputs.model_sha == model_id(model_bytes)
+
+
+def test_inputs_missing_model_file_is_runtime_failure(tmp_path):
+    resolved = _inputs_resolved(tmp_path)
+    resolved["models"]["m"]["path"] = str(tmp_path / "gone.bin")
+    with pytest.raises(RuntimeFailure, match=r"model 'm': file not found: "):
+        SummarizerInputsCache(resolved).inputs(Summarizer("s", "m", {}, "t", {}))
+
+
+def test_template_error_names_the_template(tmp_path):
+    resolved = _inputs_resolved(tmp_path)
+    resolved["prompt_templates"]["t"] = str(tmp_path / "gone.json")
+    with pytest.raises(RuntimeFailure, match=r"template 't': file not found: "):
+        SummarizerInputsCache(resolved).template("t")

@@ -95,7 +95,7 @@ def _commit_generation(store, transcript, index):
     """Seed the FK chain (transcript/model/template/generation) and return
     the generation sha for (transcript, the single summarizer)."""
     transcript_sha = store.upsert_transcript(transcript, "ds", None, index)
-    model_sha = store.upsert_model(b"model-bytes", "m", "model.bin")
+    model_sha = store.upsert_model(model_id(b"model-bytes"), "m", "model.bin")
     template_sha = store.upsert_template("sys", "usr", "t")
     return (
         store.upsert_generation(

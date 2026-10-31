@@ -16,6 +16,7 @@ from evalapp.datasets import Dataset
 from evalapp.endpoint_client import EndpointClient
 from evalapp.errors import FailFastAbort
 from evalapp.generate import generate_hook, generate_plan_text, run_generate
+from evalapp import summarizers as summarizers_module
 from evalapp.judge_call import judge_call
 from evalapp.scoring import Flag, score
 from evalapp.store import Store
@@ -283,7 +284,7 @@ def test_stage1_fail_fast_prints_plans_no_scoring(tmp_path):
     datasets = {"ds": _dataset()}
     selected = {"ds": [0, 1, 2]}
 
-    def boom(_store, _console):
+    def boom(_store, _console, _inputs):
         raise FailFastAbort()
 
     store_path = str(tmp_path / "store.db")
@@ -344,3 +345,30 @@ def test_print_plan_kwarg_preserves_default(tmp_path):
     )
     store.close()
     assert console.lines == ["done(generate): 3 committed, 0 skipped, 0 failed"]
+
+
+def test_shared_model_file_read_once_per_command(tmp_path, monkeypatch):
+    model_path, template_paths = _workspace_one_model_two_templates(tmp_path)
+    resolved = _resolved_shared_model(model_path, template_paths)
+    datasets = {"ds": _dataset()}
+    selected = {"ds": [0, 1, 2]}
+    fake = _FakeTransport()
+    fake.enqueue(*[(200, _completion(f"g{i}")) for i in range(6)])
+    hook = generate_hook(
+        resolved, datasets, selected, select_summarizers(resolved),
+        _client(fake), _FakeCycles(), print_plan=False,
+    )
+    model_opens = []
+
+    def counting_open(path, *args, **kwargs):
+        if str(path) == str(model_path):
+            model_opens.append(path)
+        return open(path, *args, **kwargs)
+
+    monkeypatch.setattr(summarizers_module, "open", counting_open, raising=False)
+    lines, *_ = _run_score(
+        resolved, tmp_path, Flag(value=["faithfulness"]), Flag(no=True),
+        datasets, selected, generate=hook,
+    )
+    assert lines[-1] == "done(score): 6 committed, 0 dropped, 0 failed"
+    assert len(model_opens) == 1

@@ -7,42 +7,10 @@ ticket 08.
 """
 from .endpoint_client import EndpointError
 from .errors import FailFastAbort, RuntimeFailure
-from .identities import canonical_json, generation_id, model_id, template_id, transcript_id
-from .templates import load_template
+from .identities import canonical_json, generation_id, transcript_id
+from .summarizers import SummarizerInputsCache
 
 
-def _surface_key(summarizer):
-    return (
-        summarizer.model,
-        canonical_json(summarizer.model_args),
-        summarizer.template,
-        canonical_json(summarizer.gen_params),
-    )
-
-
-def _load_surface(resolved, summarizer):
-    """(model_bytes, model_sha, template, template_sha) for one summarizer;
-    the model file and the template file are each read at most once per
-    run (caller caches by summarizer identity)."""
-    path = resolved["models"][summarizer.model]["path"]
-    try:
-        with open(path, "rb") as handle:
-            model_bytes = handle.read()
-    except FileNotFoundError:
-        raise RuntimeFailure(
-            f"model '{summarizer.model}': file not found: {path}"
-        ) from None
-    except (OSError, UnicodeDecodeError) as exc:
-        detail = getattr(exc, "strerror", None) or exc
-        raise RuntimeFailure(
-            f"model '{summarizer.model}': cannot read {path}: {detail}"
-        ) from None
-    model_sha = model_id(model_bytes)
-    template = load_template(
-        summarizer.template, resolved["prompt_templates"][summarizer.template]
-    )
-    template_sha = template_id(template.system_content, template.user_prefix)
-    return model_bytes, model_sha, template, template_sha
 
 
 def _messages(template, transcript_text):
@@ -81,12 +49,14 @@ def generate_plan_text(datasets, selected, summarizers):
 
 def run_generate(
     store, console, resolved, datasets, selected, summarizers, client,
-    cycles, print_plan=True,
+    cycles, print_plan=True, inputs=None,
 ):
     """One generate run: the plan line, the pre-scan skip, and the
     per-item atomic commits (one complete-or-absent unit per item).
     print_plan defaults to True (standalone CLI); score() prints the
-    plan(generate) line itself and passes print_plan=False."""
+    plan(generate) line itself and passes print_plan=False. inputs is the
+    command's SummarizerInputsCache (a new one when None)."""
+    inputs = inputs if inputs is not None else SummarizerInputsCache(resolved)
     items = [
         (summarizer, dataset, index)
         for summarizer in summarizers
@@ -99,24 +69,22 @@ def run_generate(
             "generate", generate_plan_text(datasets, selected, summarizers)
         )
 
-    surfaces = {}
     pending = []
     skipped = 0
     for summarizer, dataset, index in items:
         entry = dataset.entries[index]
-        surface = surfaces.setdefault(
-            _surface_key(summarizer), _load_surface(resolved, summarizer)
-        )
-        model_bytes, model_sha, template, template_sha = surface
+        summarizer_inputs = inputs.inputs(summarizer)
         generation_sha = generation_id(
             transcript_id(entry["transcript"]),
-            model_sha,
+            summarizer_inputs.model_sha,
             summarizer.model_args,
-            template_sha,
+            summarizer_inputs.template_sha,
             summarizer.gen_params,
         )
         if store.get_generation(generation_sha) is None:
-            pending.append((summarizer, dataset, index, entry, surface, generation_sha))
+            pending.append(
+                (summarizer, dataset, index, entry, summarizer_inputs, generation_sha)
+            )
         else:
             skipped += 1
 
@@ -130,8 +98,8 @@ def run_generate(
 
     committed = 0
     try:
-        for summarizer, dataset, index, entry, surface, generation_sha in pending:
-            model_bytes, model_sha, template, template_sha = surface
+        for summarizer, dataset, index, entry, summarizer_inputs, generation_sha in pending:
+            template = summarizer_inputs.template
             try:
                 server = cycles.ensure(summarizer.model, summarizer.model_args)
                 text = client.complete(
@@ -169,15 +137,16 @@ def run_generate(
                         entry.get("entry_id"), index,
                     )
                 store.upsert_model(
-                    model_bytes, summarizer.model,
+                    summarizer_inputs.model_sha, summarizer.model,
                     resolved["models"][summarizer.model]["path"],
                 )
                 store.upsert_template(
                     template.system_content, template.user_prefix, summarizer.template
                 )
                 store.upsert_generation(
-                    transcript_sha, model_sha, summarizer.model_args,
-                    template_sha, summarizer.gen_params, text,
+                    transcript_sha, summarizer_inputs.model_sha,
+                    summarizer.model_args, summarizer_inputs.template_sha,
+                    summarizer.gen_params, text,
                 )
             committed += 1
     finally:
@@ -191,15 +160,16 @@ def generate_hook(
     resolved, datasets, selected, summarizers, client, cycles,
     print_plan=True,
 ):
-    """The generate(store, console) hook for score: scoring.py calls it
-    with an already-open store; ticket 08 passes it as `generate=` with
+    """The generate(store, console, inputs) hook for score: scoring.py
+    calls it with an already-open store and the command's
+    SummarizerInputsCache; ticket 08 passes it as `generate=` with
     print_plan=False because score() prints the plan(generate) line
     itself (before the plan(score) line, before the hook runs)."""
 
-    def generate(store, console):
+    def generate(store, console, inputs=None):
         run_generate(
             store, console, resolved, datasets, selected, summarizers, client,
-            cycles, print_plan=print_plan,
+            cycles, print_plan=print_plan, inputs=inputs,
         )
 
     return generate

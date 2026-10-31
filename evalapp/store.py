@@ -24,7 +24,6 @@ from .identities import (
     judge_evaluation_id,
     judge_id,
     metric_evaluation_id,
-    model_id,
     summary_id,
     template_id,
     transcript_id,
@@ -483,8 +482,7 @@ class Store:
         )
         return sha
 
-    def upsert_model(self, model_bytes, name, model_path):
-        sha = model_id(model_bytes)
+    def upsert_model(self, sha, name, model_path):
         columns = ("name", "model_path")
         self._upsert(
             "models", "model_sha256", sha, columns, (name, model_path), columns

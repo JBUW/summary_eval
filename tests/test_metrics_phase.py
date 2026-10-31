@@ -85,7 +85,7 @@ def _seed(store, dataset, template, generation_text=GEN):
     transcript_sha = store.upsert_transcript(
         entry["transcript"], "ds", entry.get("entry_id"), 0
     )
-    model_sha = store.upsert_model(MODEL_BYTES, "m", "model.bin")
+    model_sha = store.upsert_model(model_id(MODEL_BYTES), "m", "model.bin")
     template_sha = store.upsert_template(
         template["system_content"], template["user_template"], "t"
     )
@@ -265,10 +265,3 @@ def test_prompt_text_is_template_composition(tmp_path):
     store.close()
 
 
-def test_missing_model_file_is_runtime_failure(tmp_path):
-    dataset, resolved, summarizer, template = _build(tmp_path)
-    resolved["models"]["m"]["path"] = str(tmp_path / "gone.bin")
-    store = Store(str(tmp_path / "store.db"))
-    with pytest.raises(RuntimeFailure, match=r"model 'm': file not found: "):
-        _phase(store, resolved, summarizer, ["conciseness_length_proxy"], dataset)
-    store.close()

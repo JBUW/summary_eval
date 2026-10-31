@@ -22,6 +22,7 @@ from evalapp.errors import SpecError
 from evalapp.report import apply_blind_sample, candidate_label, _stats, report
 from evalapp.scoring import Flag, judge_sha, resolve_scorers
 from evalapp.selection import resolve_selection
+from evalapp.identities import model_id
 from evalapp.store import Store
 from evalapp.summarizers import Summarizer, select_summarizers
 
@@ -55,7 +56,7 @@ def _add_judge(workspace):
 
 
 def _seed(store):
-    model_sha = store.upsert_model(b"model-bytes", "m", "model.bin")
+    model_sha = store.upsert_model(model_id(b"model-bytes"), "m", "model.bin")
     template_sha = store.upsert_template("sys", "usr", "t")
     generation_shas, transcript_shas = [], []
     for index in range(3):
@@ -318,9 +319,9 @@ def test_latest_wins_name_lookup(tmp_path):
     context = _context(_workspace(tmp_path))
     store = Store(str(context["workspace"] / "store.db"))
     try:
-        old_sha = store.upsert_model(b"old-bytes", "m", "model.bin")
+        old_sha = store.upsert_model(model_id(b"old-bytes"), "m", "model.bin")
         time.sleep(1.05)
-        new_sha = store.upsert_model(b"model-bytes", "m", "model.bin")
+        new_sha = store.upsert_model(model_id(b"model-bytes"), "m", "model.bin")
         template_sha = store.upsert_template("sys", "usr", "t")
         transcript_sha = store.upsert_transcript(
             "transcript 0", "named", "id-00", 0

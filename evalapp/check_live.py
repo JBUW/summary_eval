@@ -1,6 +1,6 @@
 """The live phase of check (ticket 11): one server cycle per distinct
 (model, model_args) pair, one probe completion per distinct summarizer
-surface of the pair, a once-per-dataset context-adequacy warn after the
+(Summarizer.key) of the pair, a once-per-dataset context-adequacy warn after the
 first pair's probes, and remote judge probes behind --probe-judges. No
 store footprint. The endpoint client and the server cycles are referenced
 through module attributes at call time (unit tests monkeypatch them on
@@ -12,14 +12,13 @@ from .cli import _parse_json_object
 from .datasets import load_dataset
 from .endpoint_client import EndpointError, create_client
 from .errors import FailFastAbort, RuntimeFailure
-from .identities import canonical_json
 from .judge_call import judge_call
 from .model_server import (
     ServerCycles,
     distinct_model_pairs,
     effective_server_spec,
 )
-from .templates import load_template
+from .summarizers import SummarizerInputsCache, named_summarizer
 
 PROBE_TRANSCRIPT = "Probe transcript for the check command."
 JUDGE_EXAMPLE_TRANSCRIPT = "Example transcript for the check judge probe."
@@ -42,15 +41,6 @@ def _fail_local(console, cycles, target, exc):
     for line in cycles.log_tail(20):
         console.log(line)
     raise FailFastAbort()
-
-
-def _surface_key(entry):
-    return (
-        entry["model"],
-        canonical_json(entry["model_args"]),
-        entry["prompt_template"],
-        canonical_json(entry["gen_params"]),
-    )
 
 
 def _probe_messages(template):
@@ -126,6 +116,7 @@ def run_live(args, config, resolved, console):
             client,
             console,
         )
+    inputs = SummarizerInputsCache(resolved)
     probe_count = 0
     judge_count = 0
     try:
@@ -135,26 +126,24 @@ def run_live(args, config, resolved, console):
             except (EndpointError, RuntimeFailure) as exc:
                 _fail_local(console, cycles, f"model '{model}'", exc)
             seen = set()
-            for name, entry in resolved["summarizers"].items():
+            for name in resolved["summarizers"]:
+                summarizer = named_summarizer(resolved, name)
                 if (
-                    entry["model"] != model
-                    or json.dumps(entry["model_args"], sort_keys=True)
+                    summarizer.model != model
+                    or json.dumps(summarizer.model_args, sort_keys=True)
                     != json.dumps(model_args, sort_keys=True)
                 ):
                     continue
-                key = _surface_key(entry)
-                if key in seen:
+                if summarizer.key in seen:
                     continue
-                seen.add(key)
-                template = load_template(
-                    name, resolved["prompt_templates"][entry["prompt_template"]]
-                )
+                seen.add(summarizer.key)
+                template = inputs.template(summarizer.template)
                 try:
                     client.complete(
                         server.root,
                         model,
                         _probe_messages(template),
-                        gen_params=entry["gen_params"],
+                        gen_params=summarizer.gen_params,
                     )
                 except (EndpointError, RuntimeFailure) as exc:
                     _fail_local(console, cycles, f"summarizer '{name}'", exc)

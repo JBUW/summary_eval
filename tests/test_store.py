@@ -6,6 +6,7 @@ import pytest
 from evalapp import store
 from evalapp.errors import RuntimeFailure, SpecError
 from evalapp.identities import (
+    model_id,
     generation_id,
     judge_evaluation_id,
     judge_id,
@@ -50,7 +51,7 @@ def _seed_chain(opened, reference=True):
     """One row each in transcripts, models, prompt_templates, generations
     (and reference_summaries when reference=True), FK-linked."""
     transcript_sha = opened.upsert_transcript("text", "d", None, 0)
-    model_sha = opened.upsert_model(b"bytes", "m", "/m.gguf")
+    model_sha = opened.upsert_model(model_id(b"bytes"), "m", "/m.gguf")
     template_sha = opened.upsert_template("sys", "pre", "t")
     generation_sha = opened.upsert_generation(
         transcript_sha, model_sha, {}, template_sha, {"max_tokens": 1}, "gen text"

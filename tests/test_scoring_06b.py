@@ -7,7 +7,7 @@ import pytest
 from evalapp import scoring
 from evalapp.datasets import Dataset
 from evalapp.errors import RuntimeFailure, SpecError
-from evalapp.identities import judge_evaluation_id, judge_id, summary_id
+from evalapp.identities import judge_evaluation_id, judge_id, summary_id, model_id
 from evalapp.metrics import registered_names
 from evalapp.scoring import (
     Flag,
@@ -79,7 +79,7 @@ def _commit_generation(store, transcript, index):
     """Seed the FK chain (transcript/model/template/generation) and return
     the generation sha for (transcript, the single summarizer)."""
     transcript_sha = store.upsert_transcript(transcript, "ds", None, index)
-    model_sha = store.upsert_model(b"model-bytes", "m", "model.bin")
+    model_sha = store.upsert_model(model_id(b"model-bytes"), "m", "model.bin")
     template_sha = store.upsert_template("sys", "usr", "t")
     from evalapp.identities import generation_id
 
@@ -356,21 +356,21 @@ def test_orchestrator_order_warn_plan_generate_metrics_judges(
     store_seen = []
     console = _RecordingConsole()
 
-    def fake_plan(store, r, scorers, infeasible, datasets, selected, summarizers):
+    def fake_plan(store, r, scorers, infeasible, datasets, selected, summarizers, inputs):
         events.append(("plan", len(console.warnings)))
         store_seen.append(store)
         return ScorePlan(5, 1, 3, 9, 0, 2)
 
-    def fake_generate(store, c):
+    def fake_generate(store, c, inputs):
         events.append("generate")
         store_seen.append(store)
 
-    def fake_metrics(store, r, scorers, infeasible, datasets, selected, summarizers, c):
+    def fake_metrics(store, r, scorers, infeasible, datasets, selected, summarizers, c, inputs):
         events.append("metrics")
         store_seen.append(store)
         return MetricsPhaseResult(3, 0, 9, 0, 0, 0)
 
-    def fake_judges(store, r, scorers, infeasible, datasets, selected, summarizers, client, judge_call, c):
+    def fake_judges(store, r, scorers, infeasible, datasets, selected, summarizers, client, judge_call, c, inputs):
         events.append("judges")
         store_seen.append(store)
         return JudgePhaseResult(3, 0, 3, 0, 0, 0)
@@ -404,19 +404,19 @@ def test_generate_failure_propagates_before_any_scoring(tmp_path, monkeypatch):
     resolved = _resolved(model_path, template_path)
     events = []
 
-    def fake_plan(store, r, scorers, infeasible, datasets, selected, summarizers):
+    def fake_plan(store, r, scorers, infeasible, datasets, selected, summarizers, inputs):
         events.append("plan")
         return ScorePlan(5, 0, 3, 15, 0, 1)
 
-    def fake_metrics(store, r, scorers, infeasible, datasets, selected, summarizers, c):
+    def fake_metrics(store, r, scorers, infeasible, datasets, selected, summarizers, c, inputs):
         events.append("metrics")
         return MetricsPhaseResult(0, 0, 0, 0, 0, 0)
 
-    def fake_judges(store, r, scorers, infeasible, datasets, selected, summarizers, client, judge_call, c):
+    def fake_judges(store, r, scorers, infeasible, datasets, selected, summarizers, client, judge_call, c, inputs):
         events.append("judges")
         return JudgePhaseResult(0, 0, 0, 0, 0, 0)
 
-    def boom(store, c):
+    def boom(store, c, inputs):
         raise RuntimeFailure("generate stage 1 failed")
 
     monkeypatch.setattr("evalapp.scoring.score_plan", fake_plan)
@@ -442,15 +442,15 @@ def test_metrics_failure_prevents_judges_phase(tmp_path, monkeypatch):
     )
     events = []
 
-    def fake_plan(store, r, scorers, infeasible, datasets, selected, summarizers):
+    def fake_plan(store, r, scorers, infeasible, datasets, selected, summarizers, inputs):
         events.append("plan")
         return ScorePlan(5, 1, 1, 6, 0, 0)
 
-    def fake_metrics(store, r, scorers, infeasible, datasets, selected, summarizers, c):
+    def fake_metrics(store, r, scorers, infeasible, datasets, selected, summarizers, c, inputs):
         events.append("metrics")
         raise RuntimeFailure("metric exploded")
 
-    def fake_judges(store, r, scorers, infeasible, datasets, selected, summarizers, client, judge_call, c):
+    def fake_judges(store, r, scorers, infeasible, datasets, selected, summarizers, client, judge_call, c, inputs):
         events.append("judges")
         return JudgePhaseResult(0, 0, 0, 0, 0, 0)
 

@@ -17,7 +17,7 @@ from evalapp.endpoint_client import (
     RequestTimeout,
 )
 from evalapp.errors import RuntimeFailure
-from evalapp.identities import generation_id, judge_evaluation_id
+from evalapp.identities import generation_id, judge_evaluation_id, model_id
 from evalapp.judge_call import judge_call, render_judge_messages
 from evalapp.scoring import JudgePhaseResult, ResolvedScorers, run_judges_phase
 from evalapp.store import Store
@@ -86,7 +86,7 @@ def _commit_generation(store, transcript, index):
     """Seed the FK chain (transcript/model/template/generation) and return
     the generation sha for (transcript, the single summarizer)."""
     transcript_sha = store.upsert_transcript(transcript, "ds", None, index)
-    model_sha = store.upsert_model(b"model-bytes", "m", "model.bin")
+    model_sha = store.upsert_model(model_id(b"model-bytes"), "m", "model.bin")
     template_sha = store.upsert_template("sys", "usr", "t")
     return (
         store.upsert_generation(

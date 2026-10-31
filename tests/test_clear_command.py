@@ -2,6 +2,7 @@ import sqlite3
 
 import harness
 from evalapp import store
+from evalapp.identities import model_id
 
 
 def _seed_counts(tmp_path):
@@ -16,7 +17,7 @@ def _seed_counts(tmp_path):
         opened.upsert_reference_summary(
             "ref 0", transcript_shas[0], "named", "id-00", 0
         )
-        model_sha = opened.upsert_model(b"model bytes", "m", "/models/m.gguf")
+        model_sha = opened.upsert_model(model_id(b"model bytes"), "m", "/models/m.gguf")
         template_sha = opened.upsert_template("sys", "prefix", "t")
         generation_sha = opened.upsert_generation(
             transcript_shas[0], model_sha, {}, template_sha, {"max_tokens": 1}, "gen text"

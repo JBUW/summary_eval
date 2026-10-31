@@ -13,20 +13,16 @@ from dataclasses import dataclass
 from . import metrics
 from .errors import RuntimeFailure, SpecError
 from .identities import (
-    canonical_json,
     judge_evaluation_id,
     judge_id,
     generation_id,
     metric_evaluation_id,
-    model_id,
     summary_id,
-    template_id,
     transcript_id,
 )
 from .metrics import MetricInput
-from .templates import load_template
 from .store import Store
-from .summarizers import select_summarizers
+from .summarizers import SummarizerInputsCache, select_summarizers
 
 _EMPTY_BRACKET = "[]"
 
@@ -217,13 +213,13 @@ def infeasible_pairs(resolved, scorers, datasets):
 
 def run_metrics_phase(
     store, resolved, scorers, infeasible, datasets, selected, summarizers,
-    console,
+    console, inputs=None,
 ):
     """Metrics phase over every item (dataset × selected index × summarizer),
     one atomic (item, scorer) unit at a time; a metric algorithm failure is a
     RuntimeFailure (exit 1) before any judge call."""
     specs = metrics.resolve(list(scorers.metrics))
-    surfaces = {}
+    inputs = inputs if inputs is not None else SummarizerInputsCache(resolved)
     items = missing_generation = committed = skipped = excluded = dropped = 0
     for dataset in datasets.values():
         for index in selected[dataset.name]:
@@ -232,20 +228,12 @@ def run_metrics_phase(
             reference = entry["reference"] if dataset.has_references else None
             for summarizer in summarizers:
                 items += 1
-                surface_key = (
-                    summarizer.model,
-                    canonical_json(summarizer.model_args),
-                    summarizer.template,
-                    canonical_json(summarizer.gen_params),
-                )
-                surface = surfaces.get(surface_key)
-                if surface is None:
-                    surface = _item_surface(resolved, summarizer)
-                    surfaces[surface_key] = surface
-                model_sha, template, template_sha = surface
+                summarizer_inputs = inputs.inputs(summarizer)
+                template = summarizer_inputs.template
                 generation_sha = generation_id(
-                    transcript_sha, model_sha, summarizer.model_args,
-                    template_sha, summarizer.gen_params,
+                    transcript_sha, summarizer_inputs.model_sha,
+                    summarizer.model_args, summarizer_inputs.template_sha,
+                    summarizer.gen_params,
                 )
                 generation_text = store.get_generation(generation_sha)
                 if generation_text is None:
@@ -292,12 +280,15 @@ def run_metrics_phase(
     )
 
 
-def score_plan(store, resolved, scorers, infeasible, datasets, selected, summarizers):
+def score_plan(
+    store, resolved, scorers, infeasible, datasets, selected, summarizers,
+    inputs=None,
+):
     """Resume pre-scan: every (item, scorer) unit counts "to run" or
     "already scored" by evaluation-row existence alone — no generation
     fetch, no reference parsing, so an uncommitted generation (a
     --generate run) still reports the full remainder before generate."""
-    surfaces = {}
+    inputs = inputs if inputs is not None else SummarizerInputsCache(resolved)
     judge_shas = {}
     items = to_run = already_scored = 0
     for dataset in datasets.values():
@@ -306,20 +297,11 @@ def score_plan(store, resolved, scorers, infeasible, datasets, selected, summari
             transcript_sha = transcript_id(entry["transcript"])
             for summarizer in summarizers:
                 items += 1
-                surface_key = (
-                    summarizer.model,
-                    canonical_json(summarizer.model_args),
-                    summarizer.template,
-                    canonical_json(summarizer.gen_params),
-                )
-                surface = surfaces.get(surface_key)
-                if surface is None:
-                    surface = _item_surface(resolved, summarizer)
-                    surfaces[surface_key] = surface
-                model_sha, _template, template_sha = surface
+                summarizer_inputs = inputs.inputs(summarizer)
                 generation_sha = generation_id(
-                    transcript_sha, model_sha, summarizer.model_args,
-                    template_sha, summarizer.gen_params,
+                    transcript_sha, summarizer_inputs.model_sha,
+                    summarizer.model_args, summarizer_inputs.template_sha,
+                    summarizer.gen_params,
                 )
                 for name in scorers.metrics:
                     if (name, dataset.name) in infeasible:
@@ -386,14 +368,14 @@ def score_metrics(
 
 def run_judges_phase(
     store, resolved, scorers, infeasible, datasets, selected, summarizers,
-    client, judge_call, console,
+    client, judge_call, console, inputs=None,
 ):
     """Judges phase over every item (dataset × selected index ×
     summarizer), one atomic (item, judge) unit at a time; resume skips a
     unit whose evaluation row already exists (no call, no tokens)."""
     if not scorers.judges:
         return JudgePhaseResult(0, 0, 0, 0, 0, 0)
-    surfaces = {}
+    inputs = inputs if inputs is not None else SummarizerInputsCache(resolved)
     judge_shas = {}
     items = missing_generation = committed = skipped = dropped = failed = 0
     for dataset in datasets.values():
@@ -403,20 +385,11 @@ def run_judges_phase(
             reference = entry["reference"] if dataset.has_references else None
             for summarizer in summarizers:
                 items += 1
-                surface_key = (
-                    summarizer.model,
-                    canonical_json(summarizer.model_args),
-                    summarizer.template,
-                    canonical_json(summarizer.gen_params),
-                )
-                surface = surfaces.get(surface_key)
-                if surface is None:
-                    surface = _item_surface(resolved, summarizer)
-                    surfaces[surface_key] = surface
-                model_sha, _template, template_sha = surface
+                summarizer_inputs = inputs.inputs(summarizer)
                 generation_sha = generation_id(
-                    transcript_sha, model_sha, summarizer.model_args,
-                    template_sha, summarizer.gen_params,
+                    transcript_sha, summarizer_inputs.model_sha,
+                    summarizer.model_args, summarizer_inputs.template_sha,
+                    summarizer.gen_params,
                 )
                 generation_text = store.get_generation(generation_sha)
                 if generation_text is None:
@@ -521,12 +494,14 @@ def _run_score(
     """Store-scoped run: the plan lines (generate, then score), the
     optional generate hook, the metrics phase, and the judges phase; the
     store closes in a finally. The generation, no-scorers, and
-    done(score) lines print after close."""
+    done(score) lines print after close. One SummarizerInputsCache serves
+    every step, so each model file is read at most once per command."""
+    inputs = SummarizerInputsCache(resolved)
     store = Store(store_path)
     try:
         plan = score_plan(
             store, resolved, scorers, infeasible, datasets, selected,
-            summarizers,
+            summarizers, inputs,
         )
         if generate is not None:
             from .generate import generate_plan_text
@@ -546,14 +521,14 @@ def _run_score(
             f"{plan.infeasible_pairs} infeasible",
         )
         if generate is not None:
-            generate(store, console)
+            generate(store, console, inputs)
         metrics_result = run_metrics_phase(
             store, resolved, scorers, infeasible, datasets, selected,
-            summarizers, console,
+            summarizers, console, inputs,
         )
         judges_result = run_judges_phase(
             store, resolved, scorers, infeasible, datasets, selected,
-            summarizers, client, judge_call, console,
+            summarizers, client, judge_call, console, inputs,
         )
     finally:
         store.close()
@@ -627,30 +602,6 @@ def sweep(
         summarizers, console, client, judge_call, generate,
     )
     return scorers, plan, metrics_result, judges_result
-
-
-def _item_surface(resolved, summarizer):
-    """(model_sha, template, template_sha) for one summarizer; the model
-    file and the template file are each read at most once per phase."""
-    path = resolved["models"][summarizer.model]["path"]
-    try:
-        with open(path, "rb") as handle:
-            model_bytes = handle.read()
-    except FileNotFoundError:
-        raise RuntimeFailure(
-            f"model '{summarizer.model}': file not found: {path}"
-        ) from None
-    except (OSError, UnicodeDecodeError) as exc:
-        detail = getattr(exc, "strerror", None) or exc
-        raise RuntimeFailure(
-            f"model '{summarizer.model}': cannot read {path}: {detail}"
-        ) from None
-    model_sha = model_id(model_bytes)
-    template = load_template(
-        summarizer.template, resolved["prompt_templates"][summarizer.template]
-    )
-    template_sha = template_id(template.system_content, template.user_prefix)
-    return model_sha, template, template_sha
 
 
 def _compute_metric(

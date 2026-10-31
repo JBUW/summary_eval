@@ -7,6 +7,7 @@ import harness  # noqa: F401  (puts the repo root on sys.path)
 
 from evalapp.identities import canonical_json, hash_components, judge_id, sha256_hex
 from evalapp.judge_parser import QUALITIES
+from evalapp.identities import model_id
 from evalapp.store import Store
 
 
@@ -16,7 +17,7 @@ def _store(tmp_path):
 
 def _seeded_store(tmp_path):
     store = Store(str(tmp_path / "store.db"))
-    model_sha = store.upsert_model(b"model-bytes", "m", "model.bin")
+    model_sha = store.upsert_model(model_id(b"model-bytes"), "m", "model.bin")
     template_sha = store.upsert_template("sys", "usr", "t")
     generation_shas, transcript_shas = [], []
     for index in range(2):
@@ -37,7 +38,7 @@ def test_model_sha_by_name(tmp_path):
     store = _store(tmp_path)
     try:
         assert store.model_sha_by_name("m") is None
-        sha = store.upsert_model(b"model-bytes", "m", "model.bin")
+        sha = store.upsert_model(model_id(b"model-bytes"), "m", "model.bin")
         assert store.model_sha_by_name("m") == sha == sha256_hex(b"model-bytes")
     finally:
         store.close()
@@ -46,9 +47,9 @@ def test_model_sha_by_name(tmp_path):
 def test_model_sha_by_name_latest_wins(tmp_path):
     store = _store(tmp_path)
     try:
-        store.upsert_model(b"old-bytes", "m", "model.bin")
+        store.upsert_model(model_id(b"old-bytes"), "m", "model.bin")
         time.sleep(1.05)
-        store.upsert_model(b"new-bytes", "m", "model.bin")
+        store.upsert_model(model_id(b"new-bytes"), "m", "model.bin")
         assert store.model_sha_by_name("m") == sha256_hex(b"new-bytes")
     finally:
         store.close()

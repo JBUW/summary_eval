@@ -10,6 +10,7 @@ from evalapp.endpoint_client import EndpointClient
 from evalapp.generate import generate_hook
 from evalapp.judge_call import judge_call
 from evalapp.scoring import sweep
+from evalapp.identities import model_id
 from evalapp.store import Store
 from evalapp.summarizers import select_summarizers
 
@@ -78,7 +79,7 @@ def _commit_generation(store, transcript, index, dataset_name="ds"):
     """Seed the FK chain (transcript/model/template/generation) and return
     the generation sha for (transcript, the single summarizer)."""
     transcript_sha = store.upsert_transcript(transcript, dataset_name, None, index)
-    model_sha = store.upsert_model(b"model-bytes", "m", "model.bin")
+    model_sha = store.upsert_model(model_id(b"model-bytes"), "m", "model.bin")
     template_sha = store.upsert_template("sys", "usr", "t")
     return (
         store.upsert_generation(
@@ -198,7 +199,7 @@ def test_cli_no_spawn_all_committed(tmp_path):
     harness.add_summarizer_section(str(tmp_path / "config.json"))
     harness.add_server_section(str(tmp_path / "config.json"))
     store = Store(str(tmp_path / "store.db"))
-    model_sha = store.upsert_model(b"model-bytes", "m", "model.bin")
+    model_sha = store.upsert_model(model_id(b"model-bytes"), "m", "model.bin")
     template_sha = store.upsert_template("sys", "usr", "t")
     for name in ("named", "unnamed"):
         with open(tmp_path / f"{name}.jsonl", encoding="utf-8") as handle:
