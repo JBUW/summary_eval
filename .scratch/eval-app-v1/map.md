@@ -13,6 +13,7 @@
 - `resolved["prompt_templates"][name]` stores the template's `path` string, not the content.
 - The `score` commit unit is one (item, scorer): the `reference_summaries` upsert (when applicable) and the evaluation INSERT in the same transaction; a crash loses at most one unit (docs/commands.md, §score Store footprint).
 - The normative `score` console strings live in docs/commands.md §score.
+- Ticket 12 (architecture review, 2026-10-31): the dataset loader is the only reader of a dataset file. Each entry carries `reference` (text, or `None` iff no `reference_field`); `Dataset.has_references` replaces callers' `decl["reference_field"]` checks; R1 makes empty-reference handling at use sites dead, so none exists; references are a load-time snapshot held in memory like transcripts. `scoring._read_reference` is deleted (issues/12-dataset-owns-reference.md).
 
 ## Closed tickets
 
