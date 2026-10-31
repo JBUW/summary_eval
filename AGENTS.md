@@ -39,7 +39,15 @@ Container quirks (broken `ps`, sandboxed sockets, no GitHub credentials) and whe
 
 ### Commit identity
 
-Agent commits must always pass the identity explicitly: `git -c user.name="Codex" -c user.email="codex@local" ...`. The agent must not use the identity set in the repository config (`.git/config`).
+Agent commits must always pass the identity explicitly and must not use the identity set in the repository config (`.git/config`):
+
+    git -c user.name="<name>" -c user.email="<email>" commit ...
+
+Pick the identity in this order; the first that applies wins:
+
+1. **Co-author identity.** If the agent would add a `Co-authored-by:` trailer for itself, use that trailer's name and address as the author and omit the trailer (e.g. `Copilot <223556219+Copilot@users.noreply.github.com>`).
+2. **History.** Otherwise reuse this agent's identity from the commit history exactly; list the identities with `git --no-pager log --format='%an <%ae>' | sort | uniq -c | sort -rn`.
+3. **Derived.** Otherwise use the agent's product name as it introduces itself, with the email `<name>@local` (lower-case, spaces as `-`; e.g. `Codex <codex@local>`).
 
 ### Pre-commit hook
 
