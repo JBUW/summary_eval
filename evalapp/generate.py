@@ -8,7 +8,6 @@ ticket 08.
 from .endpoint_client import EndpointError
 from .errors import FailFastAbort, RuntimeFailure
 from .identities import canonical_json, generation_id, model_id, template_id, transcript_id
-from .scoring import _read_reference
 from .templates import load_template
 
 
@@ -159,9 +158,7 @@ def run_generate(
                     f"{_plural(total, 'item', 'items')} already committed"
                 )
                 raise FailFastAbort()
-            reference = None
-            if dataset.decl["reference_field"] is not None:
-                reference = _read_reference(dataset.decl, index)
+            reference = entry["reference"] if dataset.has_references else None
             with store.transaction():
                 transcript_sha = store.upsert_transcript(
                     entry["transcript"], dataset.name, entry.get("entry_id"), index

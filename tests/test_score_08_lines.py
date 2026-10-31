@@ -349,33 +349,6 @@ def test_no_scorable_pairs_selection_scoped(tmp_path):
     ]
 
 
-def test_mid_run_reference_warn_after_plan(tmp_path):
-    ref_path = tmp_path / "ref.jsonl"
-    ref_path.write_text(json.dumps({"transcript": "t0", "r": ""}) + "\n")
-    model_path, template_path = _workspace(tmp_path)
-    resolved = _resolved(model_path, template_path)
-    dataset = _dataset(
-        reference_field="r", entries=[{"transcript": "t0"}], path=str(ref_path),
-    )
-
-    def seed(store):
-        _commit_generation(store, "t0", 0)
-
-    lines, _scorers, _plan, _metrics_result, _judges_result, _fake = _score(
-        resolved, tmp_path,
-        Flag(value=["key_claim_completeness"]), Flag(no=True),
-        {"ds": dataset}, {"ds": [0]}, seed=seed,
-    )
-
-    assert lines == [
-        "plan(score): 1 metric, 0 judges | 1 item | "
-        "1 to run, 0 already scored | 0 infeasible",
-        "warn: metric 'key_claim_completeness' has no reference for "
-        "entry #0 in dataset 'ds' (pair skipped)",
-        "done(score): 0 committed, 1 dropped, 0 failed",
-    ]
-
-
 def test_cli_metrics_only_fresh_store(tmp_path):
     workspace = harness.standard_workspace(tmp_path)
     harness.add_summarizer_section(str(workspace / "config.json"))

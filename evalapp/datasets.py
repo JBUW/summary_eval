@@ -12,6 +12,10 @@ class Dataset:
     entries: list
     id_map: dict = field(default_factory=dict)
 
+    @property
+    def has_references(self):
+        return self.decl.get("reference_field") is not None
+
 
 def load_dataset(name, decl):
     """Load one configured dataset (contract R1: fail fast, exit 2)."""
@@ -110,6 +114,7 @@ def _load_csv(name, path, text, decl):
                 f"(columns: {', '.join(header)})"
             )
     transcript_key = decl["transcript_field"]
+    reference_key = decl.get("reference_field")
     id_key = decl.get("entry_id_field")
     entries = []
     id_map = {}
@@ -127,7 +132,7 @@ def _load_csv(name, path, text, decl):
             )
             continue
         record = dict(zip(header, row))
-        entry = {"index": len(entries)}
+        entry = {"index": len(entries), "reference": record.get(reference_key)}
         if transcript_key in record:
             entry["transcript"] = record[transcript_key]
         entries.append(entry)
@@ -143,6 +148,7 @@ def _load_csv(name, path, text, decl):
 def _load_json_lines(name, path, text, decl):
     errors = []
     transcript_key = decl["transcript_field"]
+    reference_key = decl.get("reference_field")
     id_key = decl.get("entry_id_field")
     entries = []
     id_map = {}
@@ -174,7 +180,7 @@ def _load_json_lines(name, path, text, decl):
                     f"dataset '{name}': field '{key}' not found in {path} "
                     f"(line {number})"
                 )
-        entry = {"index": len(entries)}
+        entry = {"index": len(entries), "reference": object_.get(reference_key)}
         if transcript_key in object_:
             entry["transcript"] = object_[transcript_key]
         entries.append(entry)

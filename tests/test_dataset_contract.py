@@ -40,7 +40,7 @@ def test_csv_duplicate_column_reported_once_per_name(tmp_path):
     d = decl(path, transcript_field="a", reference_field=None, entry_id_field=None)
     entries, id_map, errors = collect(path, d)
     assert errors == [f"dataset 'ds': duplicate column name 'a' in {path}"]
-    assert entries == [{"index": 0, "transcript": "z"}]
+    assert entries == [{"index": 0, "reference": None, "transcript": "z"}]
     assert id_map == {}
 
 
@@ -54,7 +54,7 @@ def test_csv_duplicate_column_is_first_error_before_field_absence(tmp_path):
         f"dataset 'ds': duplicate column name 'text' in {path}",
         f"dataset 'ds': field 'ref' not found in {path} (columns: text, text, id)",
     ]
-    assert entries == [{"index": 0, "transcript": "b", "entry_id": "1"}]
+    assert entries == [{"index": 0, "reference": None, "transcript": "b", "entry_id": "1"}]
     assert id_map == {"1": 0}
     assert fail_first(path, d) == (
         f"dataset 'ds': duplicate column name 'text' in {path}"
@@ -71,7 +71,7 @@ def test_csv_empty_transcript(tmp_path):
     d = decl(path)
     entries, id_map, errors = collect(path, d)
     assert errors == [f"dataset 'ds': empty transcript in {path} (line 2)"]
-    assert entries == [{"index": 0, "transcript": "", "entry_id": "b"}]
+    assert entries == [{"index": 0, "reference": "r2", "transcript": "", "entry_id": "b"}]
     assert id_map == {"b": 0}
     assert fail_first(path, d) == f"dataset 'ds': empty transcript in {path} (line 2)"
 
@@ -83,7 +83,7 @@ def test_csv_empty_entry_id(tmp_path):
     d = decl(path)
     entries, id_map, errors = collect(path, d)
     assert errors == [f"dataset 'ds': empty entry id in {path} (line 2)"]
-    assert entries == [{"index": 0, "transcript": "ok", "entry_id": ""}]
+    assert entries == [{"index": 0, "reference": "r1", "transcript": "ok", "entry_id": ""}]
     assert id_map == {"": 0}
     assert fail_first(path, d) == f"dataset 'ds': empty entry id in {path} (line 2)"
 
@@ -98,8 +98,8 @@ def test_csv_duplicate_entry_id_names_later_occurrence(tmp_path):
     entries, id_map, errors = collect(path, d)
     assert errors == [f"dataset 'ds': duplicate entry id 'a' in {path} (line 3)"]
     assert entries == [
-        {"index": 0, "transcript": "ok", "entry_id": "a"},
-        {"index": 1, "transcript": "ok2", "entry_id": "a"},
+        {"index": 0, "reference": "r1", "transcript": "ok", "entry_id": "a"},
+        {"index": 1, "reference": "r2", "transcript": "ok2", "entry_id": "a"},
     ]
     assert id_map == {"a": 1}
     assert fail_first(path, d) == (
@@ -114,7 +114,7 @@ def test_csv_empty_reference(tmp_path):
     d = decl(path)
     entries, id_map, errors = collect(path, d)
     assert errors == [f"dataset 'ds': empty reference in {path} (line 2)"]
-    assert entries == [{"index": 0, "transcript": "ok", "entry_id": "a"}]
+    assert entries == [{"index": 0, "reference": "", "transcript": "ok", "entry_id": "a"}]
     assert id_map == {"a": 0}
     assert fail_first(path, d) == f"dataset 'ds': empty reference in {path} (line 2)"
 
@@ -131,7 +131,7 @@ def test_csv_malformed_rows_precede_value_checks(tmp_path):
         f"dataset 'ds': malformed line 3 in {path}: expected 3 columns, got 1",
         f"dataset 'ds': empty transcript in {path} (line 2)",
     ]
-    assert entries == [{"index": 0, "transcript": "", "entry_id": "b"}]
+    assert entries == [{"index": 0, "reference": "r2", "transcript": "", "entry_id": "b"}]
     assert fail_first(path, d) == (
         f"dataset 'ds': malformed line 3 in {path}: expected 3 columns, got 1"
     )
@@ -207,10 +207,10 @@ def test_jsonl_collect_full_error_order(tmp_path):
         f"dataset 'ds': empty reference in {path} (line 5)",
     ]
     assert entries == [
-        {"index": 0, "transcript": "ok", "entry_id": "a"},
-        {"index": 1, "entry_id": "b"},
-        {"index": 2, "transcript": "", "entry_id": "a"},
-        {"index": 3, "transcript": "ok", "entry_id": "c"},
+        {"index": 0, "reference": "r", "transcript": "ok", "entry_id": "a"},
+        {"index": 1, "reference": "r", "entry_id": "b"},
+        {"index": 2, "reference": "r", "transcript": "", "entry_id": "a"},
+        {"index": 3, "reference": "", "transcript": "ok", "entry_id": "c"},
     ]
     assert id_map == {"a": 2, "b": 1, "c": 3}
 
@@ -269,8 +269,8 @@ def test_jsonl_absent_field_skips_only_its_value_check(tmp_path):
         f"dataset 'ds': field 'ref' not found in {path} (line 2)",
     ]
     assert entries == [
-        {"index": 0, "transcript": "ok", "entry_id": "a"},
-        {"index": 1, "entry_id": "b"},
+        {"index": 0, "reference": None, "transcript": "ok", "entry_id": "a"},
+        {"index": 1, "reference": None, "entry_id": "b"},
     ]
     assert id_map == {"a": 0, "b": 1}
 
@@ -283,7 +283,7 @@ def test_single_space_transcript_is_not_empty(tmp_path):
     d = {"path": path, "transcript_field": "text", "reference_field": "ref"}
     entries, id_map, errors = collect(path, d)
     assert errors == []
-    assert entries == [{"index": 0, "transcript": " "}]
+    assert entries == [{"index": 0, "reference": "r", "transcript": " "}]
     assert id_map == {}
 
 
@@ -300,8 +300,8 @@ def test_no_entry_id_errors_without_entry_id_field(tmp_path):
         f"dataset 'ds': empty reference in {path} (line 3)",
     ]
     assert entries == [
-        {"index": 0, "transcript": "ok"},
-        {"index": 1, "transcript": "ok2"},
+        {"index": 0, "reference": "", "transcript": "ok"},
+        {"index": 1, "reference": "", "transcript": "ok2"},
     ]
     assert id_map == {}
 
@@ -329,8 +329,8 @@ def test_clean_load_shapes_entries_and_id_map(tmp_path):
     )
     dataset = load_dataset("ds", decl(path))
     assert dataset.entries == [
-        {"index": 0, "transcript": "t1", "entry_id": "a"},
-        {"index": 1, "transcript": "t2", "entry_id": "b"},
+        {"index": 0, "reference": "r1", "transcript": "t1", "entry_id": "a"},
+        {"index": 1, "reference": "r2", "transcript": "t2", "entry_id": "b"},
     ]
     assert dataset.id_map == {"a": 0, "b": 1}
 
@@ -343,8 +343,8 @@ def test_clean_load_shapes_entries_and_id_map(tmp_path):
     )
     dataset = load_dataset("ds", decl(jsonl_path))
     assert dataset.entries == [
-        {"index": 0, "transcript": "t1", "entry_id": "a"},
-        {"index": 1, "transcript": "t2", "entry_id": "b"},
+        {"index": 0, "reference": "r1", "transcript": "t1", "entry_id": "a"},
+        {"index": 1, "reference": "r2", "transcript": "t2", "entry_id": "b"},
     ]
     assert dataset.id_map == {"a": 0, "b": 1}
 

@@ -4,7 +4,7 @@ import sqlite3
 
 import pytest
 
-from evalapp.datasets import Dataset, load_dataset
+from evalapp.datasets import load_dataset
 from evalapp.errors import RuntimeFailure
 from evalapp.identities import (
     metric_evaluation_id,
@@ -161,43 +161,6 @@ def test_reference_metric_commits_evaluation_and_reference_summary(tmp_path):
     finally:
         connection.close()
     assert rows == [(transcript_id("transcript one"), "ds", "id-0", 0)]
-    store.close()
-
-
-def test_missing_reference_drops_pair_with_warn(tmp_path):
-    dataset, resolved, summarizer, template = _build(tmp_path)
-    no_ref_path = tmp_path / "noref.jsonl"
-    no_ref_path.write_text(
-        json.dumps({"text": "transcript one", "id": "id-0"}) + "\n",
-        encoding="utf-8",
-    )
-    broken = Dataset(
-        name="ds",
-        decl={
-            "path": str(no_ref_path),
-            "transcript_field": "text",
-            "reference_field": "ref",
-            "entry_id_field": "id",
-        },
-        entries=[{"index": 0, "transcript": "transcript one", "entry_id": "id-0"}],
-    )
-    store = Store(str(tmp_path / "store.db"))
-    _seed(store, broken, template)
-    console = RecordingConsole()
-    result, console = _phase(
-        store, resolved, summarizer, ["key_claim_completeness"], broken,
-        console=console,
-    )
-    assert result == MetricsPhaseResult(
-        items=1, missing_generation=0, committed=0, skipped=0, excluded=0, dropped=1
-    )
-    assert console.lines == [
-        (
-            "warn",
-            "metric 'key_claim_completeness' has no reference for entry #0 "
-            "in dataset 'ds' (pair skipped)",
-        )
-    ]
     store.close()
 
 

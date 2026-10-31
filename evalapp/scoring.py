@@ -7,8 +7,6 @@ score() emits everything itself: pre-effect warns/notes, the plan(score)
 line, mid-run phase warns (legal after plan lines), the generation and
 no-scorers notes, and done(score).
 """
-import csv
-import json
 import os
 from dataclasses import dataclass
 
@@ -206,13 +204,13 @@ def infeasible_pairs(resolved, scorers, datasets):
         if not metrics.get(name).requires_reference:
             continue
         for dataset in datasets.values():
-            if dataset.decl["reference_field"] is None:
+            if not dataset.has_references:
                 pairs.append(("metric", name, dataset.name))
     for name in scorers.judges:
         if not resolved["judges"][name]["requires_reference"]:
             continue
         for dataset in datasets.values():
-            if dataset.decl["reference_field"] is None:
+            if not dataset.has_references:
                 pairs.append(("judge", name, dataset.name))
     return pairs
 
@@ -231,8 +229,7 @@ def run_metrics_phase(
         for index in selected[dataset.name]:
             entry = dataset.entries[index]
             transcript_sha = transcript_id(entry["transcript"])
-            reference = None
-            reference_loaded = False
+            reference = entry["reference"] if dataset.has_references else None
             for summarizer in summarizers:
                 items += 1
                 surface_key = (
@@ -257,18 +254,6 @@ def run_metrics_phase(
                 for spec in specs:
                     if (spec.name, dataset.name) in infeasible:
                         continue
-                    if spec.requires_reference:
-                        if not reference_loaded:
-                            reference = _read_reference(dataset.decl, index)
-                            reference_loaded = True
-                        if reference is None:
-                            console.warn(
-                                f"metric '{spec.name}' has no reference "
-                                f"for entry #{index} in dataset "
-                                f"'{dataset.name}' (pair skipped)"
-                            )
-                            dropped += 1
-                            continue
                     reference_sha = (
                         summary_id(reference)
                         if spec.requires_reference
@@ -415,8 +400,7 @@ def run_judges_phase(
         for index in selected[dataset.name]:
             entry = dataset.entries[index]
             transcript_sha = transcript_id(entry["transcript"])
-            reference = None
-            reference_loaded = False
+            reference = entry["reference"] if dataset.has_references else None
             for summarizer in summarizers:
                 items += 1
                 surface_key = (
@@ -442,18 +426,6 @@ def run_judges_phase(
                     if (name, dataset.name) in infeasible:
                         continue
                     judge_entry = resolved["judges"][name]
-                    if judge_entry["requires_reference"]:
-                        if not reference_loaded:
-                            reference = _read_reference(dataset.decl, index)
-                            reference_loaded = True
-                        if reference is None:
-                            console.warn(
-                                f"judge '{name}' has no reference "
-                                f"for entry #{index} in dataset "
-                                f"'{dataset.name}' (pair skipped)"
-                            )
-                            dropped += 1
-                            continue
                     reference_sha = (
                         summary_id(reference)
                         if judge_entry["requires_reference"]
@@ -698,48 +670,3 @@ def _compute_metric(
             f"metric '{spec.name}' failed for entry #{index} "
             f"in dataset '{dataset_name}': {exc}"
         ) from exc
-
-
-def _read_reference(decl, index):
-    """The reference text for one entry, or None (R2 drop) when the field is
-    absent or empty; any read/parse failure is a RuntimeFailure (exit 1)."""
-    path = decl["path"]
-    try:
-        with open(path, "r", encoding="utf-8") as handle:
-            text = handle.read()
-    except FileNotFoundError:
-        raise RuntimeFailure(f"reference: file not found: {path}") from None
-    except (OSError, UnicodeDecodeError) as exc:
-        detail = getattr(exc, "strerror", None) or exc
-        raise RuntimeFailure(
-            f"reference: cannot read {path}: {detail}"
-        ) from None
-    extension = path.rsplit(".", 1)[1].lower() if "." in path else ""
-    if extension == "csv":
-        rows = list(csv.reader(text.splitlines()))
-        if len(rows) <= index + 1:
-            raise RuntimeFailure(f"reference: {path} has no entry #{index}")
-        record = dict(zip(rows[0], rows[index + 1]))
-    else:
-        records = []
-        for line in text.splitlines():
-            if not line:
-                continue
-            try:
-                line_record = json.loads(line)
-            except json.JSONDecodeError as exc:
-                raise RuntimeFailure(
-                    f"reference: malformed {path}: not valid JSON: {exc}"
-                ) from exc
-            if not isinstance(line_record, dict):
-                raise RuntimeFailure(
-                    f"reference: malformed {path}: expected a JSON object"
-                )
-            records.append(line_record)
-        if index >= len(records):
-            raise RuntimeFailure(f"reference: {path} has no entry #{index}")
-        record = records[index]
-    value = record.get(decl["reference_field"])
-    if value in (None, ""):
-        return None
-    return value

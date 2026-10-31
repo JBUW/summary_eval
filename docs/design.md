@@ -95,7 +95,7 @@ The application is **corpus-agnostic** (which corpora it is pointed at is a cura
 Two standing rules cover everything the loader does:
 
 - **R1 — load-time contract failures are final** (exit 1): configured fields missing, entries structurally malformed, or a dataset mixing named and unnamed entries. Text-length limits are *not* checked at load time in v1; fit is instead surfaced by `check`'s context-adequacy probe (warning) and by `generate` failing fast (exit 1) if a model rejects a prompt.
-- **R2 — per-entry reference absence is not an error.** Scoring drops the pairs that cannot be scored (warning); a scope with zero scorable pairs prints the note "no scorable pairs in scope; nothing scored" and exits 0.
+- **R2 — a dataset without references is not an error.** A dataset with no `reference_field` makes every reference-requiring scorer infeasible for it: scoring drops each such (scorer, dataset) pair with one warning; a scope with zero scorable pairs prints the note "no scorable pairs in scope; nothing scored" and exits 0.
 
 Datasets do not exist in the store by name: the store holds the texts themselves (plus courtesy `dataset_name`/`entry_id`/`entry_index` columns), so it stays valid if the datasets on disk change or disappear (`docs/store-schema.md`).
 

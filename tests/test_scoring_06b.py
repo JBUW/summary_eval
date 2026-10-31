@@ -144,19 +144,15 @@ def _run_phase(
     )
 
 
-def _reference_dataset(tmp_path, ref_value):
-    """A dataset whose file holds the reference column (decl['path'] is the
-    dataset file; _read_reference re-reads it by index)."""
-    dataset_path = tmp_path / "data.jsonl"
-    dataset_path.write_text(json.dumps({"t": "t0", "ref": ref_value}) + "\n")
+def _reference_dataset(ref_value):
     return Dataset(
         name="ds",
         decl={
-            "path": str(dataset_path),
+            "path": "data.jsonl",
             "transcript_field": "t",
             "reference_field": "ref",
         },
-        entries=[{"transcript": "t0"}],
+        entries=[{"transcript": "t0", "reference": ref_value}],
     )
 
 
@@ -557,7 +553,7 @@ def test_reference_judge_commits_reference_and_scores(tmp_path):
         model_path, template_path,
         judges={"j": _judge_entry(requires_reference=True)},
     )
-    dataset = _reference_dataset(tmp_path, "ref-0")
+    dataset = _reference_dataset("ref-0")
     store = Store(tmp_path / "store.db")
     try:
         generation_sha, _ = _commit_generation(store, "t0", 0)
@@ -586,44 +582,6 @@ def test_reference_judge_commits_reference_and_scores(tmp_path):
     assert fake.calls == [("client-obj", "j", "t0", "gen:t0", "ref-0")]
     assert row == (1.0, 0.7, 0.6)
     assert counts["reference_summaries"] == 1
-
-
-def test_missing_reference_drops_pair_before_resume_check(tmp_path):
-    model_path, template_path = _workspace(tmp_path)
-    resolved = _resolved(
-        model_path, template_path,
-        judges={"j": _judge_entry(requires_reference=True)},
-    )
-    dataset = _reference_dataset(tmp_path, "")
-    store = Store(tmp_path / "store.db")
-    try:
-        generation_sha, transcript_sha = _commit_generation(store, "t0", 0)
-        entry = _judge_entry(requires_reference=True)
-        _seed_judge(store, entry)
-        # an evaluation row already exists — the drop must still win
-        reference_sha = store.upsert_reference_summary(
-            "old-ref", transcript_sha, "ds", None, 0
-        )
-        judge_sha = judge_id("pin", {}, "sys", "tpl {transcript}", True)
-        store.upsert_judge_evaluation(
-            judge_sha, generation_sha, reference_sha, 0.5, 0.5, 0.5
-        )
-        fake = _JudgeFake({"factual_correctness": 1.0})
-        console = _RecordingConsole()
-        result = _run_phase(
-            store, resolved, ("j",), dataset, fake, console
-        )
-    finally:
-        store.close()
-    assert result == JudgePhaseResult(
-        items=1, missing_generation=0, committed=0, skipped=0, dropped=1,
-        failed=0,
-    )
-    assert fake.calls == []
-    assert console.warnings == [
-        "judge 'j' has no reference for entry #0 in dataset 'ds' "
-        "(pair skipped)"
-    ]
 
 
 def test_infeasible_pair_is_silent(tmp_path):
@@ -675,7 +633,7 @@ def test_judge_call_failure_propagates(tmp_path):
         store.close()
 
 
-def test_reference_read_once_shared_across_judges(tmp_path, monkeypatch):
+def test_reference_shared_across_judges(tmp_path):
     model_path, template_path = _workspace(tmp_path)
     judges = {
         "j1": _judge_entry(requires_reference=True),
@@ -684,20 +642,12 @@ def test_reference_read_once_shared_across_judges(tmp_path, monkeypatch):
         ),
     }
     resolved = _resolved(model_path, template_path, judges=judges)
-    dataset = _reference_dataset(tmp_path, "ref-0")
+    dataset = _reference_dataset("ref-0")
     store = Store(tmp_path / "store.db")
     try:
         _commit_generation(store, "t0", 0)
         _seed_judge(store, judges["j1"], name="j1")
         _seed_judge(store, judges["j2"], name="j2")
-        reads = []
-        real_read = scoring._read_reference
-
-        def counting_read(decl, index):
-            reads.append(index)
-            return real_read(decl, index)
-
-        monkeypatch.setattr("evalapp.scoring._read_reference", counting_read)
         fake = _JudgeFake({"factual_correctness": 1.0})
         result = _run_phase(
             store, resolved, ("j1", "j2"), dataset, fake, _RecordingConsole()
@@ -708,7 +658,7 @@ def test_reference_read_once_shared_across_judges(tmp_path, monkeypatch):
         items=1, missing_generation=0, committed=2, skipped=0, dropped=0,
         failed=0,
     )
-    assert reads == [0]
+    assert [call[-1] for call in fake.calls] == ["ref-0", "ref-0"]
 
 
 def test_no_judges_is_all_zero_noop(tmp_path):
