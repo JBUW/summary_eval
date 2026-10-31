@@ -2,7 +2,7 @@
 
 ## Notes
 
-- Effort: build `evalapp` per `spec.md`; tickets in `issues/`. Done: 01–12, 06a–06c, 07.
+- Effort: build `evalapp` per `spec.md`; tickets in `issues/`. Done: 01–13, 06a–06c, 07.
 - Ticket 06 was split into 06a–06c on 2026-10-27 (a single session looped on the combined scope); the split parts carry the original ticket's `Blocked by` edges.
 - The `Status:` lines on tickets stay as written; done = every box checked + an "implemented" comment under `## Comments` (see 05a, 05b, 07).
 - Closed tickets' settled designs were pruned from this map on 2026-10-30; recover them via `git log --follow .scratch/eval-app-v1/map.md` (the per-ticket `design settled` commits), the code, and `docs/`.
@@ -32,3 +32,4 @@
 - 10: report — closed 2026-10-29.
 - 11: check live phase — closed 2026-10-29.
 - 12: dataset owns the reference summary — closed 2026-10-31.
+- 13: summarizers module owns the summarizer inputs — closed 2026-10-31.
