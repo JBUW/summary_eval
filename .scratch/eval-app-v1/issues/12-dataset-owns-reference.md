@@ -11,6 +11,8 @@
 - [ ] No empty-means-no-reference logic outside the loader: R1 already rejects an empty reference at load (exit 2).
 - [ ] References are read once at load and stay in memory for the command, as transcripts do (load-time snapshot).
 - [ ] `scoring._read_reference` and its private import in `generate` are deleted.
-- [ ] Tests: the monkeypatch read-counting test and `_reference_dataset` are replaced by in-memory `Dataset` entries; one loader test per format (CSV, JSONL) asserts `reference` is carried.
+- [ ] The per-entry "has no reference … (pair skipped)" warn-and-drop path in both scoring phases is deleted (unreachable under R1); `done(score)` keeps its `dropped` slot unchanged.
+- [ ] `docs/design.md` R2 is reworded to the per-(scorer, dataset) form of `docs/config.md`.
+- [ ] Tests: the three per-entry-drop tests are deleted; the monkeypatch read-counting test and `_reference_dataset` are replaced by in-memory `Dataset` entries; one loader test per format (CSV, JSONL) asserts `reference` is carried.
 
 ## Comments

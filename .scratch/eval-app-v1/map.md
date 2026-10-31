@@ -13,7 +13,11 @@
 - `resolved["prompt_templates"][name]` stores the template's `path` string, not the content.
 - The `score` commit unit is one (item, scorer): the `reference_summaries` upsert (when applicable) and the evaluation INSERT in the same transaction; a crash loses at most one unit (docs/commands.md, §score Store footprint).
 - The normative `score` console strings live in docs/commands.md §score.
-- Ticket 12 (architecture review, 2026-10-31): the dataset loader is the only reader of a dataset file. Each entry carries `reference` (text, or `None` iff no `reference_field`); `Dataset.has_references` replaces callers' `decl["reference_field"]` checks; R1 makes empty-reference handling at use sites dead, so none exists; references are a load-time snapshot held in memory like transcripts. `scoring._read_reference` is deleted (issues/12-dataset-owns-reference.md).
+- Ticket 12 (architecture review, 2026-10-31): the dataset loader is the only reader of a dataset file. Each entry carries `reference` (text, or `None` iff no `reference_field`); `Dataset.has_references` replaces callers' `decl["reference_field"]` checks; R1 makes empty-reference handling at use sites dead, so none exists; references are a load-time snapshot held in memory like transcripts. `scoring._read_reference` is deleted, together with the per-entry "has no reference … (pair skipped)" warn-and-drop path (unreachable under R1) and its three hand-built-Dataset tests; `done(score)` keeps its `dropped` slot unchanged (now always 0); `docs/design.md` R2 is reworded to the per-(scorer, dataset) form of `docs/config.md` (issues/12-dataset-owns-reference.md).
+
+## Fog
+
+- What should `dropped` in `done(score)` count? After ticket 12 nothing increments it (always 0). Options: count the units removed by R2 infeasible pairs, or remove the slot from the console contract (docs/commands.md §score).
 
 ## Closed tickets
 
