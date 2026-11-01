@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-import harness  # noqa: F401  (puts the repo root on sys.path)
+import harness
 
 from evalapp.console import Console
 from evalapp.datasets import Dataset
@@ -13,6 +13,7 @@ from evalapp.endpoint_client import EndpointClient
 from evalapp.errors import FailFastAbort
 from evalapp.generate import generate_hook, run_generate
 from evalapp.identities import generation_id, model_id, template_id, transcript_id
+from evalapp.scoring import ResolvedScorers
 from evalapp.store import Store
 from evalapp.summarizers import select_summarizers
 
@@ -279,16 +280,16 @@ def test_generate_hook_wraps_run_generate(tmp_path):
     selected = {"ds": [0, 1, 2]}
     fake = _FakeTransport()
     fake.enqueue(*[(200, _completion(f"g{i}")) for i in range(3)])
-    hook = generate_hook(
-        resolved, datasets, selected, select_summarizers(resolved), _client(fake),
-        _FakeCycles(),
-    )
+    hook = generate_hook(_client(fake), _FakeCycles())
     console = _CapturingConsole()
     store = Store(str(tmp_path / "store.db"))
-    hook(store, console)
+    hook(harness.scoring_run(
+        store, resolved, ResolvedScorers((), (), ()), datasets, selected,
+        select_summarizers(resolved), console=console,
+    ))
     assert len(fake.requests) == 3
+    # score() prints plan(generate) itself; the hook never does
     assert console.lines == [
-        "plan(generate): 1 summarizer, 3 items, 1 server cycle",
         "done(generate): 3 committed, 0 skipped, 0 failed",
     ]
 

@@ -2,6 +2,7 @@
 import json
 import sqlite3
 
+import harness
 import pytest
 
 from evalapp.datasets import load_dataset
@@ -99,10 +100,10 @@ def _phase(store, resolved, summarizer, metric_names, dataset, selected=None,
     selected = selected if selected is not None else {"ds": [0]}
     console = console if console is not None else RecordingConsole()
     scorers = ResolvedScorers(metrics=tuple(metric_names), judges=(), notes=())
-    return run_metrics_phase(
-        store, resolved, scorers, infeasible, {"ds": dataset}, selected,
-        (summarizer,), console,
-    ), console
+    return run_metrics_phase(harness.scoring_run(
+        store, resolved, scorers, {"ds": dataset}, selected, (summarizer,),
+        infeasible, console,
+    )), console
 
 
 def test_commits_non_reference_metric(tmp_path):

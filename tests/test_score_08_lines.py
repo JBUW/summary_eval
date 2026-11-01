@@ -6,7 +6,7 @@ import json
 from evalapp.console import Console
 from evalapp.datasets import Dataset
 from evalapp.endpoint_client import EndpointClient
-from evalapp.judge_call import judge_call
+from evalapp.prepare import Loaded
 from evalapp.scoring import Flag, score
 from evalapp.identities import model_id
 from evalapp.store import Store
@@ -138,9 +138,10 @@ def _score(resolved, tmp_path, metrics_flag, judges_flag, datasets, selected,
     buffer = io.StringIO()
     with contextlib.redirect_stdout(buffer):
         result = score(
-            resolved, store_path, metrics_flag, judges_flag, datasets,
-            selected, (None, None, None), console,
-            EndpointClient(transport=fake), judge_call,
+            Loaded(config=None, datasets=datasets, scope=selected,
+                   resolved=resolved),
+            store_path, metrics_flag, judges_flag, (None, None, None),
+            console, EndpointClient(transport=fake),
         )
     lines = [line for line in buffer.getvalue().splitlines() if line]
     return lines, *result, fake

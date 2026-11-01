@@ -17,7 +17,7 @@ from evalapp.endpoint_client import EndpointClient
 from evalapp.errors import FailFastAbort
 from evalapp.generate import generate_hook, generate_plan_text, run_generate
 from evalapp import summarizers as summarizers_module
-from evalapp.judge_call import judge_call
+from evalapp.prepare import Loaded
 from evalapp.scoring import Flag, score
 from evalapp.store import Store
 from evalapp.summarizers import select_summarizers
@@ -206,9 +206,10 @@ def _run_score(resolved, tmp_path, metrics_flag, judges_flag, datasets, selected
     buffer = io.StringIO()
     with contextlib.redirect_stdout(buffer):
         result = score(
-            resolved, store_path, metrics_flag, judges_flag, datasets,
-            selected, (None, None, None), console,
-            EndpointClient(transport=_FakeTransport()), judge_call,
+            Loaded(config=None, datasets=datasets, scope=selected,
+                   resolved=resolved),
+            store_path, metrics_flag, judges_flag, (None, None, None),
+            console, EndpointClient(transport=_FakeTransport()),
             generate=generate,
         )
     lines = [line for line in buffer.getvalue().splitlines() if line]
@@ -249,10 +250,7 @@ def test_plan_interleaving_hook_in_between(tmp_path):
     selected = {"ds": [0, 1, 2]}
     fake = _FakeTransport()
     fake.enqueue(*[(200, _completion(f"g{i}")) for i in range(3)])
-    hook = generate_hook(
-        resolved, datasets, selected, select_summarizers(resolved),
-        _client(fake), _FakeCycles(), print_plan=False,
-    )
+    hook = generate_hook(_client(fake), _FakeCycles())
 
     lines, store_path, _scorers, plan, _metrics_result, _judges_result = _run_score(
         resolved, tmp_path, Flag(value=["faithfulness"]), Flag(no=True),
@@ -284,7 +282,7 @@ def test_stage1_fail_fast_prints_plans_no_scoring(tmp_path):
     datasets = {"ds": _dataset()}
     selected = {"ds": [0, 1, 2]}
 
-    def boom(_store, _console, _inputs):
+    def boom(_run):
         raise FailFastAbort()
 
     store_path = str(tmp_path / "store.db")
@@ -293,10 +291,11 @@ def test_stage1_fail_fast_prints_plans_no_scoring(tmp_path):
     with contextlib.redirect_stdout(buffer):
         with pytest.raises(FailFastAbort):
             score(
-                resolved, store_path, Flag(value=["faithfulness"]),
-                Flag(no=True), datasets, selected, (None, None, None), console,
-                EndpointClient(transport=_FakeTransport()), judge_call,
-                generate=boom,
+                Loaded(config=None, datasets=datasets, scope=selected,
+                       resolved=resolved),
+                store_path, Flag(value=["faithfulness"]), Flag(no=True),
+                (None, None, None), console,
+                EndpointClient(transport=_FakeTransport()), generate=boom,
             )
     lines = [line for line in buffer.getvalue().splitlines() if line]
     assert lines == [
@@ -354,10 +353,7 @@ def test_shared_model_file_read_once_per_command(tmp_path, monkeypatch):
     selected = {"ds": [0, 1, 2]}
     fake = _FakeTransport()
     fake.enqueue(*[(200, _completion(f"g{i}")) for i in range(6)])
-    hook = generate_hook(
-        resolved, datasets, selected, select_summarizers(resolved),
-        _client(fake), _FakeCycles(), print_plan=False,
-    )
+    hook = generate_hook(_client(fake), _FakeCycles())
     model_opens = []
 
     def counting_open(path, *args, **kwargs):

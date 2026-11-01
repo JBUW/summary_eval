@@ -5,7 +5,7 @@ judges-phase failure wrap naming the item and the judge.
 No real server, no network."""
 import json
 
-import harness  # noqa: F401  (puts the repo root on sys.path)
+import harness
 import pytest
 
 from evalapp.datasets import Dataset
@@ -150,16 +150,12 @@ def _client(fake):
 def _run_phase(store, resolved, judges, dataset, client, console,
                infeasible=()):
     return run_judges_phase(
-        store,
-        resolved,
-        ResolvedScorers((), tuple(judges), ()),
-        set(infeasible),
-        {"ds": dataset},
-        {"ds": [0]},
-        select_summarizers(resolved),
+        harness.scoring_run(
+            store, resolved, ResolvedScorers((), tuple(judges), ()),
+            {"ds": dataset}, {"ds": [0]}, select_summarizers(resolved),
+            infeasible, console,
+        ),
         client,
-        judge_call,
-        console,
     )
 
 

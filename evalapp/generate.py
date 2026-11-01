@@ -54,7 +54,7 @@ def run_generate(
     """One generate run: the plan line, the pre-scan skip, and the
     per-item atomic commits (one complete-or-absent unit per item).
     print_plan defaults to True (standalone CLI); score() prints the
-    plan(generate) line itself and passes print_plan=False. inputs is the
+    plan(generate) line itself, so generate_hook passes print_plan=False. inputs is the
     command's SummarizerInputsCache (a new one when None)."""
     inputs = inputs if inputs is not None else SummarizerInputsCache(resolved)
     items = [
@@ -156,20 +156,17 @@ def run_generate(
     )
 
 
-def generate_hook(
-    resolved, datasets, selected, summarizers, client, cycles,
-    print_plan=True,
-):
-    """The generate(store, console, inputs) hook for score: scoring.py
-    calls it with an already-open store and the command's
-    SummarizerInputsCache; ticket 08 passes it as `generate=` with
-    print_plan=False because score() prints the plan(generate) line
-    itself (before the plan(score) line, before the hook runs)."""
+def generate_hook(client, cycles):
+    """The generate(run) hook for score and sweep: scoring.py calls it
+    with its ScoringRun (open store, console, inputs cache, resolved,
+    datasets, selected, summarizers). It never prints plan(generate);
+    score() prints that line itself, before the plan(score) line."""
 
-    def generate(store, console, inputs=None):
+    def generate(run):
         run_generate(
-            store, console, resolved, datasets, selected, summarizers, client,
-            cycles, print_plan=print_plan, inputs=inputs,
+            run.store, run.console, run.resolved, run.datasets, run.selected,
+            run.summarizers, client, cycles, print_plan=False,
+            inputs=run.inputs,
         )
 
     return generate

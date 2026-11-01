@@ -18,6 +18,19 @@ if REPO_ROOT not in sys.path:
 
 from evalapp.cli import main  # noqa: E402
 from evalapp.metrics import registered_names  # noqa: E402
+from evalapp.scoring import ScoringRun  # noqa: E402
+from evalapp.summarizers import SummarizerInputsCache  # noqa: E402
+
+
+def scoring_run(store, resolved, scorers, datasets, selected, summarizers,
+                infeasible=(), console=None):
+    """A ScoringRun for the direct phase tests."""
+    return ScoringRun(
+        store=store, resolved=resolved, scorers=scorers,
+        infeasible=frozenset(infeasible), datasets=datasets,
+        selected=selected, summarizers=tuple(summarizers),
+        inputs=SummarizerInputsCache(resolved), console=console,
+    )
 
 
 @dataclass

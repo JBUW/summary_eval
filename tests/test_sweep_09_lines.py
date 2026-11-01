@@ -8,11 +8,10 @@ from evalapp.console import Console
 from evalapp.datasets import Dataset
 from evalapp.endpoint_client import EndpointClient
 from evalapp.generate import generate_hook
-from evalapp.judge_call import judge_call
+from evalapp.prepare import Loaded
 from evalapp.scoring import sweep
 from evalapp.identities import model_id
 from evalapp.store import Store
-from evalapp.summarizers import select_summarizers
 
 
 def _workspace(tmp_path):
@@ -152,16 +151,15 @@ def _sweep_run(resolved, tmp_path, all_metrics, all_judges, datasets, selected,
     fake = fake or _FakeTransport()
     client = EndpointClient(transport=fake)
     cycles = _FakeCycles()
-    hook = generate_hook(
-        resolved, datasets, selected, select_summarizers(resolved),
-        client, cycles, print_plan=False,
-    )
+    hook = generate_hook(client, cycles)
     console = Console()
     buffer = io.StringIO()
     with contextlib.redirect_stdout(buffer):
         result = sweep(
-            resolved, store_path, all_metrics, all_judges, datasets,
-            selected, console, client, judge_call, generate=hook,
+            Loaded(config=None, datasets=datasets, scope=selected,
+                   resolved=resolved),
+            store_path, all_metrics, all_judges, console, client,
+            generate=hook,
         )
     lines = [line for line in buffer.getvalue().splitlines() if line]
     return lines, *result, fake

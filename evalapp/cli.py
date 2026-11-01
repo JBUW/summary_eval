@@ -8,7 +8,6 @@ from .console import Console
 from .errors import CommandStop, FailFastAbort, RuntimeFailure, SpecError
 from .endpoint_client import EndpointClient
 from .generate import generate_hook, run_generate
-from .judge_call import judge_call
 from .report import apply_blind_sample, report
 from .scoring import resolve_scorers, score, sweep
 from .selection import resolve_selection
@@ -149,17 +148,13 @@ def _score(args, console):
     client = EndpointClient()
     hook = None
     if args.generate:
-        summarizers = select_summarizers(resolved, *selection)
         spec = prepare.server_spec(args, loaded.config)
         cycles = prepare.server_cycles(spec, resolved, client, console)
-        hook = generate_hook(
-            resolved, loaded.datasets, loaded.scope, summarizers, client,
-            cycles, print_plan=False,
-        )
+        hook = generate_hook(client, cycles)
     metrics_flag, judges_flag = prepare.scorer_flags(args)
-    score(resolved, effective_store_path(loaded.config, args.store),
-          metrics_flag, judges_flag, loaded.datasets, loaded.scope, selection,
-          console, client, judge_call, generate=hook)
+    score(loaded, effective_store_path(loaded.config, args.store),
+          metrics_flag, judges_flag, selection, console, client,
+          generate=hook)
     return 0
 
 
@@ -247,17 +242,12 @@ def _sweep(args, console):
     )
     resolved = loaded.resolved
     client = EndpointClient()
-    summarizers = select_summarizers(resolved)
     spec = prepare.server_spec(args, loaded.config)
     cycles = prepare.server_cycles(spec, resolved, client, console)
-    hook = generate_hook(
-        resolved, loaded.datasets, loaded.scope, summarizers, client, cycles,
-        print_plan=False,
-    )
-    sweep(resolved, effective_store_path(loaded.config, args.store),
+    hook = generate_hook(client, cycles)
+    sweep(loaded, effective_store_path(loaded.config, args.store),
           args.all_metrics or args.all, args.all_judges or args.all,
-          loaded.datasets, loaded.scope, console, client, judge_call,
-          generate=hook)
+          console, client, generate=hook)
     return 0
 
 

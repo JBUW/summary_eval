@@ -20,6 +20,7 @@ from .identities import (
     summary_id,
     transcript_id,
 )
+from .judge_call import judge_call
 from .metrics import MetricInput
 from .store import Store
 from .summarizers import SummarizerInputsCache, select_summarizers
@@ -46,6 +47,22 @@ class ResolvedScorers:
     metrics: tuple
     judges: tuple
     notes: tuple
+
+
+@dataclass(frozen=True)
+class ScoringRun:
+    """The values every scoring phase reads, built once per command by
+    _run_score after it opens the store."""
+
+    store: Store
+    resolved: dict
+    scorers: "ResolvedScorers"
+    infeasible: frozenset
+    datasets: dict
+    selected: dict
+    summarizers: tuple
+    inputs: SummarizerInputsCache
+    console: object
 
 
 @dataclass(frozen=True)
@@ -211,15 +228,14 @@ def infeasible_pairs(resolved, scorers, datasets):
     return pairs
 
 
-def run_metrics_phase(
-    store, resolved, scorers, infeasible, datasets, selected, summarizers,
-    console, inputs=None,
-):
+def run_metrics_phase(run):
     """Metrics phase over every item (dataset × selected index × summarizer),
     one atomic (item, scorer) unit at a time; a metric algorithm failure is a
     RuntimeFailure (exit 1) before any judge call."""
-    specs = metrics.resolve(list(scorers.metrics))
-    inputs = inputs if inputs is not None else SummarizerInputsCache(resolved)
+    store, infeasible, inputs = run.store, run.infeasible, run.inputs
+    specs = metrics.resolve(list(run.scorers.metrics))
+    datasets, selected = run.datasets, run.selected
+    summarizers = run.summarizers
     items = missing_generation = committed = skipped = excluded = dropped = 0
     for dataset in datasets.values():
         for index in selected[dataset.name]:
@@ -280,15 +296,15 @@ def run_metrics_phase(
     )
 
 
-def score_plan(
-    store, resolved, scorers, infeasible, datasets, selected, summarizers,
-    inputs=None,
-):
+def score_plan(run):
     """Resume pre-scan: every (item, scorer) unit counts "to run" or
     "already scored" by evaluation-row existence alone — no generation
     fetch, no reference parsing, so an uncommitted generation (a
     --generate run) still reports the full remainder before generate."""
-    inputs = inputs if inputs is not None else SummarizerInputsCache(resolved)
+    store, resolved, scorers = run.store, run.resolved, run.scorers
+    infeasible, inputs = run.infeasible, run.inputs
+    datasets, selected = run.datasets, run.selected
+    summarizers = run.summarizers
     judge_shas = {}
     items = to_run = already_scored = 0
     for dataset in datasets.values():
@@ -339,43 +355,18 @@ def judge_sha(resolved, name):
     )
 
 
-def score_metrics(
-    resolved, store_path, metrics_flag, judges_flag, datasets, selected,
-    summarizer_selection, console,
-):
-    """Pre-effect (resolve scorers + summarizers, drop infeasible reference
-    pairs with warns) runs BEFORE the store is opened; then the metrics
-    phase, store closed in a finally. Returns (scorers, phase result)."""
-    scorers = resolve_scorers(resolved, metrics_flag, judges_flag)
-    summarizers = select_summarizers(resolved, *summarizer_selection)
-    pairs = infeasible_pairs(resolved, scorers, datasets)
-    for kind, name, dataset_name in pairs:
-        console.warn(
-            f"{kind} '{name}' requires reference summaries; "
-            f"dataset '{dataset_name}' has none (pair skipped)"
-        )
-    infeasible = {(name, dataset_name) for _, name, dataset_name in pairs}
-    store = Store(store_path)
-    try:
-        result = run_metrics_phase(
-            store, resolved, scorers, infeasible, datasets, selected,
-            summarizers, console,
-        )
-    finally:
-        store.close()
-    return scorers, result
-
-
-def run_judges_phase(
-    store, resolved, scorers, infeasible, datasets, selected, summarizers,
-    client, judge_call, console, inputs=None,
-):
+def run_judges_phase(run, client):
     """Judges phase over every item (dataset × selected index ×
     summarizer), one atomic (item, judge) unit at a time; resume skips a
     unit whose evaluation row already exists (no call, no tokens)."""
+    store, resolved, scorers, console = (
+        run.store, run.resolved, run.scorers, run.console,
+    )
+    infeasible, inputs = run.infeasible, run.inputs
+    datasets, selected = run.datasets, run.selected
+    summarizers = run.summarizers
     if not scorers.judges:
         return JudgePhaseResult(0, 0, 0, 0, 0, 0)
-    inputs = inputs if inputs is not None else SummarizerInputsCache(resolved)
     judge_shas = {}
     items = missing_generation = committed = skipped = dropped = failed = 0
     for dataset in datasets.values():
@@ -479,7 +470,9 @@ def _pre_effect(resolved, scorers, datasets, selected, console):
             f"{kind} '{name}' requires reference summaries; "
             f"dataset '{dataset_name}' has none (pair skipped)"
         )
-    infeasible = {(name, dataset_name) for _, name, dataset_name in pairs}
+    infeasible = frozenset(
+        (name, dataset_name) for _, name, dataset_name in pairs
+    )
     if (scorers.metrics or scorers.judges) and not _has_scorable_pair(
         scorers, infeasible, selected,
     ):
@@ -488,25 +481,29 @@ def _pre_effect(resolved, scorers, datasets, selected, console):
 
 
 def _run_score(
-    store_path, resolved, scorers, infeasible, datasets, selected,
-    summarizers, console, client, judge_call, generate,
+    loaded, store_path, scorers, infeasible, summarizers, console, client,
+    generate,
 ):
     """Store-scoped run: the plan lines (generate, then score), the
     optional generate hook, the metrics phase, and the judges phase; the
     store closes in a finally. The generation, no-scorers, and
     done(score) lines print after close. One SummarizerInputsCache serves
     every step, so each model file is read at most once per command."""
-    inputs = SummarizerInputsCache(resolved)
+    resolved = loaded.resolved
     store = Store(store_path)
     try:
-        plan = score_plan(
-            store, resolved, scorers, infeasible, datasets, selected,
-            summarizers, inputs,
+        run = ScoringRun(
+            store=store, resolved=resolved, scorers=scorers,
+            infeasible=infeasible, datasets=loaded.datasets,
+            selected=loaded.scope, summarizers=tuple(summarizers),
+            inputs=SummarizerInputsCache(resolved), console=console,
         )
+        plan = score_plan(run)
         if generate is not None:
             from .generate import generate_plan_text
             console.plan(
-                "generate", generate_plan_text(datasets, selected, summarizers)
+                "generate",
+                generate_plan_text(run.datasets, run.selected, summarizers),
             )
         scorer_text = (
             "0 metric(s), 0 judge(s)"
@@ -521,15 +518,9 @@ def _run_score(
             f"{plan.infeasible_pairs} infeasible",
         )
         if generate is not None:
-            generate(store, console, inputs)
-        metrics_result = run_metrics_phase(
-            store, resolved, scorers, infeasible, datasets, selected,
-            summarizers, console, inputs,
-        )
-        judges_result = run_judges_phase(
-            store, resolved, scorers, infeasible, datasets, selected,
-            summarizers, client, judge_call, console, inputs,
-        )
+            generate(run)
+        metrics_result = run_metrics_phase(run)
+        judges_result = run_judges_phase(run, client)
     finally:
         store.close()
     if not (scorers.metrics or scorers.judges):
@@ -556,8 +547,8 @@ def _run_score(
 
 
 def score(
-    resolved, store_path, metrics_flag, judges_flag, datasets, selected,
-    summarizer_selection, console, client, judge_call, generate=None,
+    loaded, store_path, metrics_flag, judges_flag, summarizer_selection,
+    console, client, generate=None,
 ):
     """Full score run; prints everything itself. Pre-effect (scorers,
     summarizers, judge credential preflight, infeasible warns, the
@@ -568,21 +559,24 @@ def score(
     propagates before any judge call), then the judges phase; the store
     closes in a finally; the generation and no-scorers notes and
     done(score) print after close. Returns (scorers, plan,
-    metrics_result, judges_result)."""
+    metrics_result, judges_result). ``loaded`` is the prepared command
+    input (resolved, datasets, scope)."""
+    resolved = loaded.resolved
     scorers = resolve_scorers(resolved, metrics_flag, judges_flag)
     summarizers = select_summarizers(resolved, *summarizer_selection)
     _credential_preflight(resolved, judges_flag)
-    infeasible = _pre_effect(resolved, scorers, datasets, selected, console)
+    infeasible = _pre_effect(
+        resolved, scorers, loaded.datasets, loaded.scope, console
+    )
     plan, metrics_result, judges_result = _run_score(
-        store_path, resolved, scorers, infeasible, datasets, selected,
-        summarizers, console, client, judge_call, generate,
+        loaded, store_path, scorers, infeasible, summarizers, console, client,
+        generate,
     )
     return scorers, plan, metrics_result, judges_result
 
 
 def sweep(
-    resolved, store_path, all_metrics, all_judges, datasets, selected,
-    console, client, judge_call, generate,
+    loaded, store_path, all_metrics, all_judges, console, client, generate,
 ):
     """Full sweep run (docs/commands.md, §sweep): the exhaustive scorer
     set (widen flags or defaults), the judge credential preflight (drop
@@ -590,16 +584,19 @@ def sweep(
     store-scoped run with the generate hook (sweep always generates).
     Prints everything itself. Returns (scorers, plan, metrics_result,
     judges_result)."""
+    resolved = loaded.resolved
     scorers = resolve_sweep_scorers(resolved, all_metrics, all_judges)
     kept = _sweep_credential_preflight(resolved, console, scorers.judges)
     scorers = ResolvedScorers(
         metrics=scorers.metrics, judges=kept, notes=scorers.notes
     )
     summarizers = select_summarizers(resolved)
-    infeasible = _pre_effect(resolved, scorers, datasets, selected, console)
+    infeasible = _pre_effect(
+        resolved, scorers, loaded.datasets, loaded.scope, console
+    )
     plan, metrics_result, judges_result = _run_score(
-        store_path, resolved, scorers, infeasible, datasets, selected,
-        summarizers, console, client, judge_call, generate,
+        loaded, store_path, scorers, infeasible, summarizers, console, client,
+        generate,
     )
     return scorers, plan, metrics_result, judges_result
 
