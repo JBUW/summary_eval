@@ -11,3 +11,12 @@ class RuntimeFailure(Exception):
 
 class FailFastAbort(Exception):
     """The fail-fast block is already printed; main maps this to exit 1."""
+
+
+class CommandStop(Exception):
+    """Stop a command early; its message is already printed. main returns
+    code (0: nothing to do, 2: configuration errors)."""
+
+    def __init__(self, code):
+        super().__init__(code)
+        self.code = code

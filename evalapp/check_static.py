@@ -2,7 +2,7 @@ import os
 
 from . import check_live
 from . import metrics
-from .cli import _parse_json_object, port_is_free
+from . import prepare
 from .config import (
     DEFAULT_CONFIG_NAME,
     effective_store_path,
@@ -11,14 +11,12 @@ from .config import (
 )
 from .datasets import _load
 from .errors import SpecError
+from .model_server import port_is_free
 from .store import Store
 
 
 def run_check(args, console):
-    if args.server_args is not None:
-        _parse_json_object(args.server_args, "--server-args")
-    if args.server_env is not None:
-        _parse_json_object(args.server_env, "--server-env")
+    prepare.server_overrides(args)
     collector = []
     config = load_config(
         args.config if args.config is not None else DEFAULT_CONFIG_NAME,

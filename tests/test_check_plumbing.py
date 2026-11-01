@@ -4,7 +4,7 @@ import sqlite3
 import pytest
 
 import harness
-from evalapp import cli
+from evalapp import model_server
 from evalapp import store
 from evalapp.errors import SpecError
 
@@ -34,7 +34,7 @@ class _BoundSocket:
 def test_port_is_free_bound_raises(monkeypatch):
     monkeypatch.setattr(socket, "socket", lambda *a, **k: _BoundSocket())
     with pytest.raises(SpecError) as excinfo:
-        cli.port_is_free(8081)
+        model_server.port_is_free(8081)
     assert str(excinfo.value) == (
         "port 8081 already bound "
         "(a previous model server may still be running)"
@@ -42,7 +42,7 @@ def test_port_is_free_bound_raises(monkeypatch):
 
 
 def test_port_is_free_free_port_passes():
-    assert cli.port_is_free(18081) is True
+    assert model_server.port_is_free(18081) is True
 
 
 def test_port_is_free_creation_failure_is_free(monkeypatch):
@@ -50,7 +50,7 @@ def test_port_is_free_creation_failure_is_free(monkeypatch):
         raise PermissionError("sandboxed")
 
     monkeypatch.setattr(socket, "socket", boom)
-    assert cli.port_is_free(8081) is True
+    assert model_server.port_is_free(8081) is True
 
 
 @pytest.mark.parametrize(

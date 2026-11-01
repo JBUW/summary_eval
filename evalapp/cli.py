@@ -1,28 +1,16 @@
 import argparse
-import json
 import os
 import sys
 
-from .config import (
-    DEFAULT_CONFIG_NAME,
-    validate_config,
-    effective_store_path,
-    load_config,
-    validate_datasets,
-)
+from . import prepare
+from .config import effective_store_path
 from .console import Console
-from .datasets import load_dataset
-from .errors import FailFastAbort, RuntimeFailure, SpecError
+from .errors import CommandStop, FailFastAbort, RuntimeFailure, SpecError
 from .endpoint_client import EndpointClient
 from .generate import generate_hook, run_generate
 from .judge_call import judge_call
-from .model_server import (
-    effective_server_spec,
-    ServerCycles,
-    port_is_free,  # re-exported for check_static
-)
 from .report import apply_blind_sample, report
-from .scoring import Flag, resolve_scorers, score, sweep
+from .scoring import resolve_scorers, score, sweep
 from .selection import resolve_selection
 from .summarizers import select_summarizers
 from .store import Store
@@ -119,78 +107,22 @@ def build_parser():
     return parser
 
 
-def _load(args, console):
-    return load_config(
-        args.config if args.config is not None else DEFAULT_CONFIG_NAME,
-        args.config is not None,
-        console,
-    )
-
-
-def _parse_json_object(value, flag):
-    try:
-        parsed = json.loads(value)
-    except json.JSONDecodeError as exc:
-        raise SpecError(f"invalid JSON for {flag}: {exc}") from exc
-    if not isinstance(parsed, dict):
-        raise SpecError(f"{flag} must be a JSON object")
-    return parsed
-
-
-def _tokens(value):
-    if value is None:
-        return None
-    return tuple(token for group in value for token in group)
-
-
 def _generate(args, console):
-    config = _load(args, console)
-    declared = validate_datasets(config)
-    datasets = {name: load_dataset(name, decl) for name, decl in declared.items()}
-    scope = resolve_selection(args.select, datasets)
-    if not any(scope.values()):
-        console.note("no entries in scope; nothing to do")
-        return 0
-    errors, resolved = validate_config(config, console)
-    if errors:
-        for message in errors:
-            console.error(message)
-        return 2
+    loaded = prepare.load_scope(args, console)
     summarizers = select_summarizers(
-        resolved,
-        _tokens(args.summarizer),
-        _tokens(args.model),
-        _tokens(args.prompt_template),
+        loaded.resolved,
+        prepare.tokens(args.summarizer),
+        prepare.tokens(args.model),
+        prepare.tokens(args.prompt_template),
     )
-    args_map = (
-        _parse_json_object(args.server_args, "--server-args")
-        if args.server_args is not None
-        else None
-    )
-    env_map = (
-        _parse_json_object(args.server_env, "--server-env")
-        if args.server_env is not None
-        else None
-    )
-    spec = effective_server_spec(
-        config,
-        command=args.server_command,
-        args_map=args_map,
-        env_map=env_map,
-        port=args.server_port,
-        startup_timeout_s=args.server_startup_timeout,
-    )
+    spec = prepare.server_spec(args, loaded.config)
     client = EndpointClient()
-    cycles = ServerCycles(
-        spec,
-        {name: model["path"] for name, model in resolved["models"].items()},
-        client,
-        console,
-    )
-    store = Store(effective_store_path(config, args.store))
+    cycles = prepare.server_cycles(spec, loaded.resolved, client, console)
+    store = Store(effective_store_path(loaded.config, args.store))
     try:
         run_generate(
-            store, console, resolved, datasets, scope, summarizers, client, cycles
+            store, console, loaded.resolved, loaded.datasets, loaded.scope,
+            summarizers, client, cycles,
         )
     finally:
         store.close()
@@ -207,51 +139,27 @@ def _score(args, console):
     if any(getattr(args, name) is not None for name in _SERVER_FLAG_ATTRS):
         if not args.generate:
             raise SpecError("--server-* flags require --generate")
-    config = _load(args, console)
-    declared = validate_datasets(config)
-    datasets = {name: load_dataset(name, decl) for name, decl in declared.items()}
-    scope = resolve_selection(args.select, datasets)
-    if not any(scope.values()):
-        console.note("no entries in scope; nothing to do")
-        return 0
-    errors, resolved = validate_config(config, console)
-    if errors:
-        for message in errors:
-            console.error(message)
-        return 2
+    loaded = prepare.load_scope(args, console)
+    resolved = loaded.resolved
+    selection = (
+        prepare.tokens(args.summarizer),
+        prepare.tokens(args.model),
+        prepare.tokens(args.prompt_template),
+    )
     client = EndpointClient()
     hook = None
     if args.generate:
-        summarizers = select_summarizers(
-            resolved, _tokens(args.summarizer), _tokens(args.model),
-            _tokens(args.prompt_template)
+        summarizers = select_summarizers(resolved, *selection)
+        spec = prepare.server_spec(args, loaded.config)
+        cycles = prepare.server_cycles(spec, resolved, client, console)
+        hook = generate_hook(
+            resolved, loaded.datasets, loaded.scope, summarizers, client,
+            cycles, print_plan=False,
         )
-        args_map = (_parse_json_object(args.server_args, "--server-args")
-                   if args.server_args is not None else None)
-        env_map = (_parse_json_object(args.server_env, "--server-env")
-                   if args.server_env is not None else None)
-        spec = effective_server_spec(config, command=args.server_command,
-                                     args_map=args_map, env_map=env_map,
-                                     port=args.server_port,
-                                     startup_timeout_s=args.server_startup_timeout)
-        cycles = ServerCycles(
-            spec, {name: model["path"] for name, model in resolved["models"].items()},
-            client, console
-        )
-        hook = generate_hook(resolved, datasets, scope, summarizers, client, cycles, print_plan=False)
-    metrics_flag = (Flag(no=args.no_metrics) if args.metrics is None
-                    else Flag(value=_tokens(args.metrics), no=args.no_metrics))
-    if args.judges is None:
-        judges_flag = Flag(no=args.no_judges)
-    else:
-        tokens = _tokens(args.judges)
-        judges_flag = (Flag(value="bare", no=args.no_judges) if not tokens
-                       else Flag(value=tokens, no=args.no_judges))
-    score(resolved, effective_store_path(config, args.store), metrics_flag,
-          judges_flag, datasets, scope,
-          (_tokens(args.summarizer), _tokens(args.model),
-           _tokens(args.prompt_template)), console, client, judge_call,
-          generate=hook)
+    metrics_flag, judges_flag = prepare.scorer_flags(args)
+    score(resolved, effective_store_path(loaded.config, args.store),
+          metrics_flag, judges_flag, loaded.datasets, loaded.scope, selection,
+          console, client, judge_call, generate=hook)
     return 0
 
 
@@ -262,47 +170,33 @@ def _report(args, console):
         raise SpecError(
             f"invalid --blind-sample {args.blind_sample} (must be >= 0)"
         )
-    config = _load(args, console)
-    declared = validate_datasets(config)
-    datasets = {name: load_dataset(name, decl) for name, decl in declared.items()}
-    scope = resolve_selection(args.select, datasets)
-    scope = apply_blind_sample(scope, args.blind_sample)
-    if not any(scope.values()):
-        console.note("no entries in scope; nothing to do")
-        return 0
-    errors, resolved = validate_config(config, console)
-    if errors:
-        for message in errors:
-            console.error(message)
-        return 2
-    metrics_flag = (Flag(no=args.no_metrics) if args.metrics is None
-                    else Flag(value=_tokens(args.metrics), no=args.no_metrics))
-    if args.judges is None:
-        judges_flag = Flag(no=args.no_judges)
-    else:
-        tokens = _tokens(args.judges)
-        judges_flag = (Flag(value="bare", no=args.no_judges) if not tokens
-                       else Flag(value=tokens, no=args.no_judges))
+    loaded = prepare.load_scope(
+        args, console,
+        scope=lambda datasets: apply_blind_sample(
+            resolve_selection(args.select, datasets), args.blind_sample
+        ),
+    )
+    resolved = loaded.resolved
+    metrics_flag, judges_flag = prepare.scorer_flags(args)
     scorers = resolve_scorers(resolved, metrics_flag, judges_flag)
     summarizers = select_summarizers(
-        resolved, _tokens(args.summarizer), _tokens(args.model),
-        _tokens(args.prompt_template),
+        resolved, prepare.tokens(args.summarizer), prepare.tokens(args.model),
+        prepare.tokens(args.prompt_template),
     )
-    for name, decl in declared.items():
-        indices = scope[name]
+    for name, indices in loaded.scope.items():
         if indices:
             console.plan("report", f"{name} {len(indices)} entries")
     report(
-        resolved, effective_store_path(config, args.store), datasets, scope,
-        summarizers, scorers, console, by_dataset=args.by == "dataset",
-        json_out=args.json, csv_path=args.csv,
+        resolved, effective_store_path(loaded.config, args.store),
+        loaded.datasets, loaded.scope, summarizers, scorers, console,
+        by_dataset=args.by == "dataset", json_out=args.json,
+        csv_path=args.csv,
     )
     return 0
 
 
-
 def _clear(args, console):
-    config = _load(args, console)
+    config = prepare.command_config(args, console)
     store_path = effective_store_path(config, args.store)
     if not os.path.exists(store_path):
         console.note(f"no store at {store_path}; nothing to clear")
@@ -344,39 +238,26 @@ def _sweep(args, console):
             "'sweep' takes no selection or scorer flags (it is exhaustive); "
             "use 'score --generate' to narrow"
         )
-    config = _load(args, console)
-    declared = validate_datasets(config)
-    datasets = {name: load_dataset(name, decl) for name, decl in declared.items()}
-    selected = {name: list(range(len(ds.entries))) for name, ds in datasets.items()}
-    if not any(selected.values()):
-        console.note("no entries in scope; nothing to do")
-        return 0
-    errors, resolved = validate_config(config, console)
-    if errors:
-        for message in errors:
-            console.error(message)
-        return 2
+    loaded = prepare.load_scope(
+        args, console,
+        scope=lambda datasets: {
+            name: list(range(len(dataset.entries)))
+            for name, dataset in datasets.items()
+        },
+    )
+    resolved = loaded.resolved
     client = EndpointClient()
     summarizers = select_summarizers(resolved)
-    args_map = (_parse_json_object(args.server_args, "--server-args")
-               if args.server_args is not None else None)
-    env_map = (_parse_json_object(args.server_env, "--server-env")
-               if args.server_env is not None else None)
-    spec = effective_server_spec(config, command=args.server_command,
-                                 args_map=args_map, env_map=env_map,
-                                 port=args.server_port,
-                                 startup_timeout_s=args.server_startup_timeout)
-    cycles = ServerCycles(
-        spec, {name: model["path"] for name, model in resolved["models"].items()},
-        client, console
-    )
+    spec = prepare.server_spec(args, loaded.config)
+    cycles = prepare.server_cycles(spec, resolved, client, console)
     hook = generate_hook(
-        resolved, datasets, selected, summarizers, client, cycles,
+        resolved, loaded.datasets, loaded.scope, summarizers, client, cycles,
         print_plan=False,
     )
-    sweep(resolved, effective_store_path(config, args.store),
+    sweep(resolved, effective_store_path(loaded.config, args.store),
           args.all_metrics or args.all, args.all_judges or args.all,
-          datasets, selected, console, client, judge_call, generate=hook)
+          loaded.datasets, loaded.scope, console, client, judge_call,
+          generate=hook)
     return 0
 
 
@@ -401,6 +282,8 @@ def main(argv):
     console = Console()
     try:
         return args.handler(args, console)
+    except CommandStop as exc:
+        return exc.code
     except FailFastAbort:
         return 1
     except SpecError as exc:

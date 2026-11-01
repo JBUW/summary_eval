@@ -2,22 +2,18 @@
 (model, model_args) pair, one probe completion per distinct summarizer
 (Summarizer.key) of the pair, a once-per-dataset context-adequacy warn after the
 first pair's probes, and remote judge probes behind --probe-judges. No
-store footprint. The endpoint client and the server cycles are referenced
-through module attributes at call time (unit tests monkeypatch them on
-this module).
+store footprint. The endpoint client is referenced through a module
+attribute at call time (unit tests monkeypatch it on this module); the
+server cycles come from evalapp.prepare (patched there).
 """
 import json
 
-from .cli import _parse_json_object
 from .datasets import load_dataset
 from .endpoint_client import EndpointError, create_client
 from .errors import FailFastAbort, RuntimeFailure
+from . import prepare
 from .judge_call import judge_call
-from .model_server import (
-    ServerCycles,
-    distinct_model_pairs,
-    effective_server_spec,
-)
+from .model_server import distinct_model_pairs
 from .summarizers import SummarizerInputsCache, named_summarizer
 
 PROBE_TRANSCRIPT = "Probe transcript for the check command."
@@ -89,33 +85,12 @@ def run_live(args, config, resolved, console):
     if not (pairs or args.probe_judges):
         return
     client = create_client()
-    args_map = (
-        _parse_json_object(args.server_args, "--server-args")
-        if args.server_args is not None
-        else None
-    )
-    env_map = (
-        _parse_json_object(args.server_env, "--server-env")
-        if args.server_env is not None
-        else None
-    )
+    prepare.server_overrides(args)
     spec = None
     cycles = None
     if pairs:
-        spec = effective_server_spec(
-            config,
-            command=args.server_command,
-            args_map=args_map,
-            env_map=env_map,
-            port=args.server_port,
-            startup_timeout_s=args.server_startup_timeout,
-        )
-        cycles = ServerCycles(
-            spec,
-            {name: model["path"] for name, model in resolved["models"].items()},
-            client,
-            console,
-        )
+        spec = prepare.server_spec(args, config)
+        cycles = prepare.server_cycles(spec, resolved, client, console)
     inputs = SummarizerInputsCache(resolved)
     probe_count = 0
     judge_count = 0

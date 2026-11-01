@@ -3,7 +3,7 @@ import os
 import pytest
 
 import harness
-from evalapp import cli
+from evalapp import model_server
 from evalapp.errors import SpecError
 
 EXPECTED_ERRORS = [
@@ -26,7 +26,7 @@ EXPECTED_ERRORS = [
 
 def test_repo_config_demo_reports_missing_files():
     try:
-        cli.port_is_free(8080)
+        model_server.port_is_free(8080)
     except SpecError:
         pytest.skip("port 8080 already bound")
     result = harness.run_cli(["check"], cwd=harness.REPO_ROOT)

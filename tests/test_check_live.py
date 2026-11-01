@@ -15,6 +15,7 @@ import os
 import harness  # noqa: F401  (puts the repo root on sys.path)
 
 import evalapp.check_live as check_live
+import evalapp.prepare as prepare
 from evalapp.endpoint_client import EndpointError
 from evalapp.errors import RuntimeFailure
 
@@ -74,7 +75,8 @@ class FakeClient:
 
 
 def _install(monkeypatch, client, cycles):
-    """Patch create_client / ServerCycles on evalapp.check_live; return a call log."""
+    """Patch create_client on evalapp.check_live and ServerCycles on
+    evalapp.prepare; return a call log."""
     log = {"clients": 0, "cycles": 0}
 
     def fake_create_client(timeout=None):
@@ -86,7 +88,7 @@ def _install(monkeypatch, client, cycles):
         return cycles
 
     monkeypatch.setattr(check_live, "create_client", fake_create_client)
-    monkeypatch.setattr(check_live, "ServerCycles", fake_cycles)
+    monkeypatch.setattr(prepare, "ServerCycles", fake_cycles)
     return log
 
 
