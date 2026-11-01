@@ -262,7 +262,7 @@ def test_plan_interleaving_hook_in_between(tmp_path):
         "plan(score): 1 metric, 0 judges | 3 items | "
         "3 to run, 0 already scored | 0 infeasible",
         "done(generate): 3 committed, 0 skipped, 0 failed",
-        "done(score): 3 committed, 0 dropped, 0 failed",
+        "done(score): 3 committed, 0 failed",
     ]
     assert sum(line.startswith("plan(generate)") for line in lines) == 1
     assert plan.items == 3
@@ -366,5 +366,5 @@ def test_shared_model_file_read_once_per_command(tmp_path, monkeypatch):
         resolved, tmp_path, Flag(value=["faithfulness"]), Flag(no=True),
         datasets, selected, generate=hook,
     )
-    assert lines[-1] == "done(score): 6 committed, 0 dropped, 0 failed"
+    assert lines[-1] == "done(score): 6 committed, 0 failed"
     assert len(model_opens) == 1

@@ -180,7 +180,7 @@ def test_metrics_resume_second_run_all_already_scored(tmp_path):
     assert lines == [
         "plan(score): 1 metric, 0 judges | 3 items | "
         "3 to run, 0 already scored | 0 infeasible",
-        "done(score): 3 committed, 0 dropped, 0 failed",
+        "done(score): 3 committed, 0 failed",
     ]
     assert plan.to_run == 3
     assert plan.already_scored == 0
@@ -195,7 +195,7 @@ def test_metrics_resume_second_run_all_already_scored(tmp_path):
     assert lines == [
         "plan(score): 1 metric, 0 judges | 3 items | "
         "0 to run, 3 already scored | 0 infeasible",
-        "done(score): 0 committed, 0 dropped, 0 failed",
+        "done(score): 0 committed, 0 failed",
     ]
     assert plan.to_run == 0
     assert plan.already_scored == 3
@@ -233,7 +233,7 @@ def test_judges_resume_no_client_calls_on_committed(tmp_path):
     assert lines == [
         "plan(score): 0 metrics, 1 judge | 3 items | "
         "0 to run, 3 already scored | 0 infeasible",
-        "done(score): 0 committed, 0 dropped, 0 failed",
+        "done(score): 0 committed, 0 failed",
     ]
     assert plan.to_run == 0
     assert plan.already_scored == 3
@@ -261,7 +261,7 @@ def test_resume_retries_only_failed_judge_units(tmp_path):
     assert plan.to_run == 3
     assert judges_result.committed == 2
     assert judges_result.failed == 1
-    assert lines[-1] == "done(score): 2 committed, 0 dropped, 1 failed"
+    assert lines[-1] == "done(score): 2 committed, 1 failed"
 
     # Resume: only the failed unit is retried — exactly one request, and
     # it names the failed transcript.
@@ -274,7 +274,7 @@ def test_resume_retries_only_failed_judge_units(tmp_path):
     assert lines == [
         "plan(score): 0 metrics, 1 judge | 3 items | "
         "1 to run, 2 already scored | 0 infeasible",
-        "done(score): 1 committed, 0 dropped, 0 failed",
+        "done(score): 1 committed, 0 failed",
     ]
     assert plan.to_run == 1
     assert plan.already_scored == 2
@@ -305,7 +305,7 @@ def test_combined_metrics_and_judges_resume_counts(tmp_path):
     assert lines == [
         "plan(score): 1 metric, 1 judge | 2 items | "
         "4 to run, 0 already scored | 0 infeasible",
-        "done(score): 4 committed, 0 dropped, 0 failed",
+        "done(score): 4 committed, 0 failed",
     ]
     assert plan.to_run == 4
     assert plan.already_scored == 0
@@ -325,7 +325,7 @@ def test_combined_metrics_and_judges_resume_counts(tmp_path):
     assert lines == [
         "plan(score): 1 metric, 1 judge | 2 items | "
         "0 to run, 4 already scored | 0 infeasible",
-        "done(score): 0 committed, 0 dropped, 0 failed",
+        "done(score): 0 committed, 0 failed",
     ]
     assert plan.to_run == 0
     assert plan.already_scored == 4

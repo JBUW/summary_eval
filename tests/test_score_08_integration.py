@@ -158,7 +158,7 @@ def test_score_smoke_metrics_phase(tmp_path):
         "summaries; dataset 'unnamed' has none (pair skipped)",
         "plan(score): 5 metrics, 0 judges | 3 items | 12 to run, "
         "0 already scored | 2 infeasible",
-        "done(score): 9 committed, 0 dropped, 0 failed",
+        "done(score): 9 committed, 0 failed",
     ]
     counts = _counts(workspace)
     assert counts["generations"] == 3
@@ -181,7 +181,7 @@ def test_score_generate_two_stage(tmp_path):
         "0 already scored | 0 infeasible",
         BUILD_NOTE,
         GEN_DONE,
-        "done(score): 3 committed, 0 dropped, 0 failed",
+        "done(score): 3 committed, 0 failed",
     ]
     counts = _counts(workspace)
     assert counts["generations"] == 3
@@ -214,7 +214,7 @@ def test_judge_parse_reject_warns_and_continues(tmp_path, monkeypatch):
         "in dataset 'named' (unit not committed)",
         "warn: judge 'j' returned no extractable qualities for entry #1 "
         "in dataset 'named' (unit not committed)",
-        "done(score): 2 committed, 0 dropped, 2 failed",
+        "done(score): 2 committed, 2 failed",
     ]
     assert log.read_text(encoding="utf-8").splitlines() == [
         "completion 1: Judge transcript 0 against fake: usrtranscript 0",
@@ -279,7 +279,7 @@ def test_judge_resume_retries_only_failed_units(tmp_path, monkeypatch):
         "in dataset 'named' (unit not committed)",
         "warn: judge 'j' returned no extractable qualities for entry #2 "
         "in dataset 'named' (unit not committed)",
-        "done(score): 3 committed, 0 dropped, 3 failed",
+        "done(score): 3 committed, 3 failed",
     ]
     assert (workspace / "judge_a.log").read_text(encoding="utf-8").splitlines() == [
         "completion 1: Judge transcript 0 against fake: usrtranscript 0",
@@ -302,7 +302,7 @@ def test_judge_resume_retries_only_failed_units(tmp_path, monkeypatch):
         "in dataset 'named' (unit not committed)",
         "warn: judge 'j' returned no extractable qualities for entry #2 "
         "in dataset 'named' (unit not committed)",
-        "done(score): 0 committed, 0 dropped, 3 failed",
+        "done(score): 0 committed, 3 failed",
     ]
     assert (workspace / "judge_b.log").read_text(encoding="utf-8").splitlines() == [
         "completion 1: Judge transcript 0 against fake: usrtranscript 0",

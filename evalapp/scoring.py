@@ -72,7 +72,6 @@ class MetricsPhaseResult:
     committed: int
     skipped: int
     excluded: int
-    dropped: int
 
 
 @dataclass(frozen=True)
@@ -91,7 +90,6 @@ class JudgePhaseResult:
     missing_generation: int
     committed: int
     skipped: int
-    dropped: int
     failed: int
 
 
@@ -236,7 +234,7 @@ def run_metrics_phase(run):
     specs = metrics.resolve(list(run.scorers.metrics))
     datasets, selected = run.datasets, run.selected
     summarizers = run.summarizers
-    items = missing_generation = committed = skipped = excluded = dropped = 0
+    items = missing_generation = committed = skipped = excluded = 0
     for dataset in datasets.values():
         for index in selected[dataset.name]:
             entry = dataset.entries[index]
@@ -292,7 +290,6 @@ def run_metrics_phase(run):
         committed=committed,
         skipped=skipped,
         excluded=excluded,
-        dropped=dropped,
     )
 
 
@@ -366,9 +363,9 @@ def run_judges_phase(run, client):
     datasets, selected = run.datasets, run.selected
     summarizers = run.summarizers
     if not scorers.judges:
-        return JudgePhaseResult(0, 0, 0, 0, 0, 0)
+        return JudgePhaseResult(0, 0, 0, 0, 0)
     judge_shas = {}
-    items = missing_generation = committed = skipped = dropped = failed = 0
+    items = missing_generation = committed = skipped = failed = 0
     for dataset in datasets.values():
         for index in selected[dataset.name]:
             entry = dataset.entries[index]
@@ -441,7 +438,6 @@ def run_judges_phase(run, client):
         missing_generation=missing_generation,
         committed=committed,
         skipped=skipped,
-        dropped=dropped,
         failed=failed,
     )
 
@@ -540,7 +536,6 @@ def _run_score(
     console.done(
         "score",
         f"{metrics_result.committed + judges_result.committed} committed, "
-        f"{metrics_result.dropped + judges_result.dropped} dropped, "
         f"{judges_result.failed} failed",
     )
     return plan, metrics_result, judges_result

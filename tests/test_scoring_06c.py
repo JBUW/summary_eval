@@ -310,7 +310,7 @@ def test_phase_commits_scores_through_real_handler(tmp_path):
         )
         assert result == JudgePhaseResult(
             items=1, missing_generation=0, committed=1, skipped=0,
-            dropped=0, failed=0,
+            failed=0,
         )
         assert store.get_judge_evaluation(
             judge_evaluation_id(judge_sha, gen_sha, None)
@@ -334,7 +334,7 @@ def test_phase_rejected_parse_warns_and_counts_failed(tmp_path):
         )
         assert result == JudgePhaseResult(
             items=1, missing_generation=0, committed=0, skipped=0,
-            dropped=0, failed=1,
+            failed=1,
         )
         assert console.warnings == [
             "judge 'j' returned no extractable qualities "

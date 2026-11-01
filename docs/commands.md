@@ -371,7 +371,7 @@ are excluded from "to run").
 
     $ <app> score --select meetbank * --summarizer std
     plan(score): 4 metrics, 1 judge | 50 items | 250 to run, 0 already scored | 0 infeasible
-    done(score): 250 committed, 0 dropped, 0 failed
+    done(score): 250 committed, 0 failed
     exit 0
 
     $ <app> score --no-judges --select qmsum-dev #3-7
@@ -382,7 +382,7 @@ are excluded from "to run").
     plan(generate): 1 summarizer, 1 item, 1 server cycle
     plan(score): 4 metrics, 1 judge | 1 item | 5 to run, 0 already scored | 0 infeasible
     done(generate): 1 committed, 0 skipped, 0 failed
-    done(score): 5 committed, 0 dropped, 0 failed
+    done(score): 5 committed, 0 failed
     exit 0
 
     $ <app> score --server-port 8081
@@ -434,7 +434,7 @@ dataset) pairs warn+drop as in `score`.
     plan(generate): 4 summarizers, 292 items, 3 server cycles
     plan(score): 4 metrics, 1 judge | 292 items | 1368 to run, 0 already scored | 1 infeasible
     done(generate): 292 committed, 0 skipped, 0 failed
-    done(score): 1368 committed, 0 dropped, 0 failed
+    done(score): 1368 committed, 0 failed
     exit 0
 
     $ <app> sweep --all

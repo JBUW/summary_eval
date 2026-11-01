@@ -282,7 +282,7 @@ def test_happy_path_commits_unit_through_client(tmp_path):
     finally:
         store.close()
     assert result == JudgePhaseResult(
-        items=1, missing_generation=0, committed=1, skipped=0, dropped=0,
+        items=1, missing_generation=0, committed=1, skipped=0,
         failed=0,
     )
     assert fake.calls == ["tpl t0 | gen:t0 | {reference}"]
@@ -308,7 +308,7 @@ def test_resume_skips_existing_unit_without_call(tmp_path):
     finally:
         store.close()
     assert result == JudgePhaseResult(
-        items=1, missing_generation=0, committed=0, skipped=1, dropped=0,
+        items=1, missing_generation=0, committed=0, skipped=1,
         failed=0,
     )
     assert fake.calls == []
@@ -421,7 +421,7 @@ def test_orchestrator_order_warn_plan_generate_metrics_judges(tmp_path):
         infeasible_pairs=1,
     )
     assert judges_result == JudgePhaseResult(
-        items=1, missing_generation=0, committed=1, skipped=0, dropped=0,
+        items=1, missing_generation=0, committed=1, skipped=0,
         failed=0,
     )
 
@@ -512,7 +512,7 @@ def test_score_without_generate_hook_runs_real_phases(tmp_path):
     )
     assert metrics_result.missing_generation == 0
     assert metrics_result.committed + metrics_result.excluded == 4
-    assert judges_result == JudgePhaseResult(0, 0, 0, 0, 0, 0)
+    assert judges_result == JudgePhaseResult(0, 0, 0, 0, 0)
     assert console.warnings == [
         "metric 'key_claim_completeness' requires reference summaries; "
         "dataset 'ds' has none (pair skipped)"
@@ -532,7 +532,7 @@ def test_missing_generation_counts_and_makes_no_call(tmp_path):
     finally:
         store.close()
     assert result == JudgePhaseResult(
-        items=1, missing_generation=1, committed=0, skipped=0, dropped=0,
+        items=1, missing_generation=1, committed=0, skipped=0,
         failed=0,
     )
     assert fake.calls == []
@@ -556,7 +556,7 @@ def test_unextractable_result_warns_and_counts_failed(tmp_path):
     finally:
         store.close()
     assert result == JudgePhaseResult(
-        items=1, missing_generation=0, committed=0, skipped=0, dropped=0,
+        items=1, missing_generation=0, committed=0, skipped=0,
         failed=1,
     )
     assert console.warnings == [
@@ -594,7 +594,7 @@ def test_reference_judge_commits_reference_and_scores(tmp_path):
     finally:
         store.close()
     assert result == JudgePhaseResult(
-        items=1, missing_generation=0, committed=1, skipped=0, dropped=0,
+        items=1, missing_generation=0, committed=1, skipped=0,
         failed=0,
     )
     assert fake.calls == ["tpl t0 | gen:t0 | ref-0"]
@@ -621,7 +621,7 @@ def test_infeasible_pair_is_silent(tmp_path):
     finally:
         store.close()
     assert result == JudgePhaseResult(
-        items=1, missing_generation=0, committed=0, skipped=0, dropped=0,
+        items=1, missing_generation=0, committed=0, skipped=0,
         failed=0,
     )
     assert fake.calls == []
@@ -672,7 +672,7 @@ def test_reference_shared_across_judges(tmp_path):
     finally:
         store.close()
     assert result == JudgePhaseResult(
-        items=1, missing_generation=0, committed=2, skipped=0, dropped=0,
+        items=1, missing_generation=0, committed=2, skipped=0,
         failed=0,
     )
     assert [call.split(" | ")[-1] for call in fake.calls] == [
@@ -693,7 +693,7 @@ def test_no_judges_is_all_zero_noop(tmp_path):
     finally:
         store.close()
     assert result == JudgePhaseResult(
-        items=0, missing_generation=0, committed=0, skipped=0, dropped=0,
+        items=0, missing_generation=0, committed=0, skipped=0,
         failed=0,
     )
     assert fake.calls == []

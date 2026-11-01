@@ -151,7 +151,7 @@ def test_sweep_smoke_and_resweep_no_spawn(tmp_path):
         "0 already scored | 2 infeasible",
         BUILD_NOTE,
         "done(generate): 24 committed, 0 skipped, 0 failed",
-        "done(score): 72 committed, 0 dropped, 0 failed",
+        "done(score): 72 committed, 0 failed",
     ]
     counts = _counts(workspace)
     assert counts["transcripts"] == 24
@@ -169,7 +169,7 @@ def test_sweep_smoke_and_resweep_no_spawn(tmp_path):
         "72 already scored | 2 infeasible",
         "note: all 24 items already committed; server not started",
         "done(generate): 0 committed, 24 skipped, 0 failed",
-        "done(score): 0 committed, 0 dropped, 0 failed",
+        "done(score): 0 committed, 0 failed",
     ]
     counts = _counts(workspace)
     assert counts["generations"] == 24
@@ -203,7 +203,7 @@ def test_sweep_judge_parse_reject_warns_exit_0(tmp_path, monkeypatch):
                 "entry #%d in dataset '%s' (unit not committed)"
                 % (index, name)
             )
-    expected.append("done(score): 72 committed, 0 dropped, 24 failed")
+    expected.append("done(score): 72 committed, 24 failed")
     assert result.lines == expected
     log_lines = log.read_text(encoding="utf-8").splitlines()
     assert len(log_lines) == 24

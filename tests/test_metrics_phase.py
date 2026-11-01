@@ -114,7 +114,7 @@ def test_commits_non_reference_metric(tmp_path):
         store, resolved, summarizer, ["conciseness_length_proxy"], dataset
     )
     assert result == MetricsPhaseResult(
-        items=1, missing_generation=0, committed=1, skipped=0, excluded=0, dropped=0
+        items=1, missing_generation=0, committed=1, skipped=0, excluded=0
     )
     expected = get_spec("conciseness_length_proxy").compute(
         MetricInput(
@@ -138,7 +138,7 @@ def test_reference_metric_commits_evaluation_and_reference_summary(tmp_path):
         store, resolved, summarizer, ["key_claim_completeness"], dataset
     )
     assert result == MetricsPhaseResult(
-        items=1, missing_generation=0, committed=1, skipped=0, excluded=0, dropped=0
+        items=1, missing_generation=0, committed=1, skipped=0, excluded=0
     )
     reference = "the reference claim here"
     expected = get_spec("key_claim_completeness").compute(
@@ -187,7 +187,7 @@ def test_missing_generation_not_committed(tmp_path):
         store, resolved, summarizer, ["conciseness_length_proxy"], dataset
     )
     assert result == MetricsPhaseResult(
-        items=1, missing_generation=1, committed=0, skipped=0, excluded=0, dropped=0
+        items=1, missing_generation=1, committed=0, skipped=0, excluded=0
     )
     store.close()
 
@@ -200,7 +200,7 @@ def test_none_value_excluded_no_row(tmp_path):
         store, resolved, summarizer, ["conciseness_length_proxy"], dataset
     )
     assert result == MetricsPhaseResult(
-        items=1, missing_generation=0, committed=0, skipped=0, excluded=1, dropped=0
+        items=1, missing_generation=0, committed=0, skipped=0, excluded=1
     )
     assert store.get_metric_evaluation(
         metric_evaluation_id("conciseness_length_proxy", generation_sha, None)
@@ -218,7 +218,7 @@ def test_infeasible_pair_skipped_silently(tmp_path):
         infeasible={("key_claim_completeness", "ds")}, console=console,
     )
     assert result == MetricsPhaseResult(
-        items=1, missing_generation=0, committed=0, skipped=0, excluded=0, dropped=0
+        items=1, missing_generation=0, committed=0, skipped=0, excluded=0
     )
     assert console.lines == []
     store.close()

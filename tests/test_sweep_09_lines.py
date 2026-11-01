@@ -188,7 +188,7 @@ def test_message_order(tmp_path):
         "plan(score): 2 metrics, 0 judges | 3 items | 3 to run, "
         "0 already scored | 1 infeasible",
         "done(generate): 3 committed, 0 skipped, 0 failed",
-        "done(score): 3 committed, 0 dropped, 0 failed",
+        "done(score): 3 committed, 0 failed",
     ]
 
 
@@ -223,7 +223,7 @@ def test_cli_no_spawn_all_committed(tmp_path):
         "0 already scored | 2 infeasible",
         "note: all 24 items already committed; server not started",
         "done(generate): 0 committed, 24 skipped, 0 failed",
-        "done(score): 36 committed, 0 dropped, 0 failed",
+        "done(score): 36 committed, 0 failed",
     ]
 
 
@@ -249,7 +249,7 @@ def test_infeasible_warn_and_note_before_plans(tmp_path):
         "plan(score): 1 metric, 0 judges | 3 items | 0 to run, "
         "0 already scored | 1 infeasible",
         "done(generate): 3 committed, 0 skipped, 0 failed",
-        "done(score): 0 committed, 0 dropped, 0 failed",
+        "done(score): 0 committed, 0 failed",
     ]
 
 
@@ -273,7 +273,7 @@ def test_zero_scorers_generates_first(tmp_path):
         "0 already scored | 0 infeasible",
         "done(generate): 3 committed, 0 skipped, 0 failed",
         "note: no metrics or judges selected; nothing scored",
-        "done(score): 0 committed, 0 dropped, 0 failed",
+        "done(score): 0 committed, 0 failed",
     ]
 
 
@@ -301,7 +301,7 @@ def test_resume_counts(tmp_path):
         "3 already scored | 0 infeasible",
         "note: all 3 items already committed; server not started",
         "done(generate): 0 committed, 3 skipped, 0 failed",
-        "done(score): 0 committed, 0 dropped, 0 failed",
+        "done(score): 0 committed, 0 failed",
     ]
 
 
@@ -332,5 +332,5 @@ def test_credential_drop_preflight(tmp_path, monkeypatch):
         "plan(score): 1 metric, 0 judges | 3 items | 3 to run, "
         "0 already scored | 0 infeasible",
         "done(generate): 3 committed, 0 skipped, 0 failed",
-        "done(score): 3 committed, 0 dropped, 0 failed",
+        "done(score): 3 committed, 0 failed",
     ]

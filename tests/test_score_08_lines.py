@@ -167,7 +167,7 @@ def test_metrics_only_docs_format(tmp_path):
     assert lines == [
         "plan(score): 3 metrics, 0 judges | 3 items | "
         "9 to run, 0 already scored | 0 infeasible",
-        "done(score): 9 committed, 0 dropped, 0 failed",
+        "done(score): 9 committed, 0 failed",
     ]
     assert plan.items == 3
     assert plan.to_run == 9
@@ -208,7 +208,7 @@ def test_judges_only(tmp_path):
     assert lines == [
         "plan(score): 0 metrics, 1 judge | 3 items | "
         "3 to run, 0 already scored | 0 infeasible",
-        "done(score): 3 committed, 0 dropped, 0 failed",
+        "done(score): 3 committed, 0 failed",
     ]
     assert len(fake.requests) == 3
 
@@ -244,7 +244,7 @@ def test_bare_judges_singular_item(tmp_path):
     assert lines == [
         "plan(score): 0 metrics, 2 judges | 1 item | "
         "2 to run, 0 already scored | 0 infeasible",
-        "done(score): 2 committed, 0 dropped, 0 failed",
+        "done(score): 2 committed, 0 failed",
     ]
     assert len(fake.requests) == 2
 
@@ -266,7 +266,7 @@ def test_zero_scorers(tmp_path):
         "plan(score): 0 metric(s), 0 judge(s) | 3 items | "
         "0 to run, 0 already scored | 0 infeasible",
         "note: no metrics or judges selected; nothing scored",
-        "done(score): 0 committed, 0 dropped, 0 failed",
+        "done(score): 0 committed, 0 failed",
     ]
 
 
@@ -283,7 +283,7 @@ def test_all_missing_generations_note(tmp_path):
         "plan(score): 1 metric, 0 judges | 3 items | "
         "3 to run, 0 already scored | 0 infeasible",
         "note: no committed generations in scope; run 'generate' first",
-        "done(score): 0 committed, 0 dropped, 0 failed",
+        "done(score): 0 committed, 0 failed",
     ]
 
 
@@ -304,7 +304,7 @@ def test_partial_missing_generations_note(tmp_path):
         "3 to run, 0 already scored | 0 infeasible",
         "note: 2 selected items have no committed generation; "
         "run 'generate' first",
-        "done(score): 1 committed, 0 dropped, 0 failed",
+        "done(score): 1 committed, 0 failed",
     ]
 
 
@@ -347,7 +347,7 @@ def test_no_scorable_pairs_selection_scoped(tmp_path):
         "note: no scorable pairs in scope; nothing scored",
         "plan(score): 1 metric, 0 judges | 2 items | "
         "0 to run, 0 already scored | 1 infeasible",
-        "done(score): 0 committed, 0 dropped, 0 failed",
+        "done(score): 0 committed, 0 failed",
     ]
 
 
@@ -365,7 +365,7 @@ def test_cli_metrics_only_fresh_store(tmp_path):
         "plan(score): 1 metric, 0 judges | 2 items | "
         "2 to run, 0 already scored | 0 infeasible",
         "note: no committed generations in scope; run 'generate' first",
-        "done(score): 0 committed, 0 dropped, 0 failed",
+        "done(score): 0 committed, 0 failed",
     ]
 
 
@@ -383,5 +383,5 @@ def test_cli_zero_scorers(tmp_path):
         "plan(score): 0 metric(s), 0 judge(s) | 2 items | "
         "0 to run, 0 already scored | 0 infeasible",
         "note: no metrics or judges selected; nothing scored",
-        "done(score): 0 committed, 0 dropped, 0 failed",
+        "done(score): 0 committed, 0 failed",
     ]
