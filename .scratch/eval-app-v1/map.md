@@ -2,7 +2,7 @@
 
 ## Notes
 
-- Effort: build `evalapp` per `spec.md`; tickets in `issues/`. Done: 01–16, 06a–06c, 07.
+- Effort: build `evalapp` per `spec.md`; tickets in `issues/`. Done: 01–17, 06a–06c, 07.
 - Ticket 06 was split into 06a–06c on 2026-10-27 (a single session looped on the combined scope); the split parts carry the original ticket's `Blocked by` edges.
 - The `Status:` lines on tickets stay as written; done = every box checked + an "implemented" comment under `## Comments` (see 05a, 05b, 07).
 - Closed tickets' settled designs were pruned from this map on 2026-10-30; recover them via `git log --follow .scratch/eval-app-v1/map.md` (the per-ticket `design settled` commits), the code, and `docs/`.
@@ -40,3 +40,4 @@
 - 14: prepare module owns command preparation — closed 2026-10-31.
 - 15: one scoring run shrinks the scoring interface — closed 2026-11-01.
 - 16: report finds candidates by identity, not by name — closed 2026-11-01.
+- 17: remove the always-zero `dropped` count — closed 2026-11-01.
