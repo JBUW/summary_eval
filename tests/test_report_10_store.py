@@ -1,18 +1,12 @@
-"""Ticket 10 — the five new read-only Store methods: latest-wins name
-lookups, generation lookup by the four identity columns, pooled metric
-values across references, and judge quality values with NULLs excluded."""
-import time
-
+"""Ticket 10 — the read-only Store methods report uses: pooled metric
+values across references, and judge quality values with NULLs excluded.
+(Ticket 16 removed the name lookups and generations_for.)"""
 import harness  # noqa: F401  (puts the repo root on sys.path)
 
-from evalapp.identities import canonical_json, hash_components, judge_id, sha256_hex
+from evalapp.identities import judge_id
 from evalapp.judge_parser import QUALITIES
 from evalapp.identities import model_id
 from evalapp.store import Store
-
-
-def _store(tmp_path):
-    return Store(str(tmp_path / "store.db"))
 
 
 def _seeded_store(tmp_path):
@@ -32,74 +26,6 @@ def _seeded_store(tmp_path):
         )
         transcript_shas.append(transcript_sha)
     return store, model_sha, template_sha, transcript_shas, generation_shas
-
-
-def test_model_sha_by_name(tmp_path):
-    store = _store(tmp_path)
-    try:
-        assert store.model_sha_by_name("m") is None
-        sha = store.upsert_model(model_id(b"model-bytes"), "m", "model.bin")
-        assert store.model_sha_by_name("m") == sha == sha256_hex(b"model-bytes")
-    finally:
-        store.close()
-
-
-def test_model_sha_by_name_latest_wins(tmp_path):
-    store = _store(tmp_path)
-    try:
-        store.upsert_model(model_id(b"old-bytes"), "m", "model.bin")
-        time.sleep(1.05)
-        store.upsert_model(model_id(b"new-bytes"), "m", "model.bin")
-        assert store.model_sha_by_name("m") == sha256_hex(b"new-bytes")
-    finally:
-        store.close()
-
-
-def test_template_sha_by_name(tmp_path):
-    store = _store(tmp_path)
-    try:
-        assert store.template_sha_by_name("t") is None
-        sha = store.upsert_template("sys", "usr", "t")
-        assert sha == hash_components(["sys", "usr"])
-        assert store.template_sha_by_name("t") == sha
-    finally:
-        store.close()
-
-
-def test_template_sha_by_name_latest_wins(tmp_path):
-    store = _store(tmp_path)
-    try:
-        store.upsert_template("sys", "usr", "t")
-        time.sleep(1.05)
-        store.upsert_template("sys2", "usr2", "t")
-        assert store.template_sha_by_name("t") == hash_components(
-            ["sys2", "usr2"]
-        )
-    finally:
-        store.close()
-
-
-def test_generations_for(tmp_path):
-    store, model_sha, template_sha, transcript_shas, generation_shas = (
-        _seeded_store(tmp_path)
-    )
-    try:
-        empty = canonical_json({})
-        found = store.generations_for(model_sha, empty, template_sha, empty)
-        assert set(found) == set(zip(generation_shas, transcript_shas))
-        assert store.generations_for(None, empty, template_sha, empty) == []
-        assert store.generations_for(model_sha, empty, None, empty) == []
-        args = canonical_json({"temperature": 0.5})
-        assert store.generations_for(model_sha, args, template_sha, empty) == []
-        other = store.upsert_generation(
-            transcript_shas[0], model_sha, {"temperature": 0.5},
-            template_sha, {}, "other",
-        )
-        assert store.generations_for(
-            model_sha, args, template_sha, empty
-        ) == [(other, transcript_shas[0])]
-    finally:
-        store.close()
 
 
 def test_metric_values(tmp_path):

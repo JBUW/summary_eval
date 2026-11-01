@@ -451,8 +451,9 @@ Computes and prints summaries of candidate performance from the store. The only
 command that reads evaluations; produces nothing but a display. Strictly read-only:
 no commits, no upserts (not even courtesy-column refreshes), no server, no model or
 judge calls. Exit 0 (zero rows ⇒ `note: no scored results in scope; run 'score' (or
-'score --generate') first`) / 2 (pre-effect, including `--server-*` given — report has
-no generate stage).
+'score --generate') first`) / 1 (a model or template file is missing or unreadable;
+before any output, no CSV file) / 2 (pre-effect, including `--server-*` given — report
+has no generate stage).
 
     <app> report [--config PATH] [--store PATH]
                  [--select <dataset> <spec> ... ...]
@@ -462,6 +463,9 @@ no generate stage).
                  [--json] [--by dataset] [--blind-sample N] [--csv PATH]
 
 - Selection and scorer resolution = `score` without `--generate` (including `*`).
+- Candidates match stored results by content identity: the model file and the
+  template are hashed, as in `score`, so they must be readable. Names in the store
+  are never used.
 - Default output: a human table, one row per (candidate, scorer) with
   `n, mean, min, max`; judges get one row per candidate × quality; `n=0` rows are
   shown with dashes, not omitted.

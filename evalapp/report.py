@@ -8,10 +8,11 @@ import json
 import os
 
 from .errors import SpecError
-from .identities import canonical_json, transcript_id
+from .identities import generation_id, transcript_id
 from .judge_parser import QUALITIES
 from .scoring import judge_sha
 from .store import Store
+from .summarizers import SummarizerInputsCache
 
 _ZERO_ROWS_NOTE = (
     "no scored results in scope; run 'score' (or 'score --generate') first"
@@ -75,24 +76,21 @@ def _group_scope(dataset, indices):
 
 
 def _collect_rows(store, resolved, summarizers, scorers, groups):
+    """Candidates match stored rows by content identity, as in score: the
+    model file and template are hashed, never looked up by name."""
+    inputs = SummarizerInputsCache(resolved)
     rows = []
     for group_label, group_scope in groups:
         for candidate in summarizers:
-            model_sha = store.model_sha_by_name(candidate.model)
-            template_sha = store.template_sha_by_name(candidate.template)
-            generation_shas = []
-            if model_sha is not None and template_sha is not None:
-                generations = store.generations_for(
-                    model_sha,
-                    canonical_json(candidate.model_args),
-                    template_sha,
-                    canonical_json(candidate.gen_params),
+            candidate_inputs = inputs.inputs(candidate)
+            generation_shas = [
+                generation_id(
+                    transcript_sha, candidate_inputs.model_sha,
+                    candidate.model_args, candidate_inputs.template_sha,
+                    candidate.gen_params,
                 )
-                generation_shas = [
-                    generation_sha
-                    for generation_sha, transcript_sha in generations
-                    if transcript_sha in group_scope
-                ]
+                for transcript_sha in sorted(group_scope)
+            ]
             label = candidate_label(candidate)
             for metric in scorers.metrics:
                 rows.append(_row(

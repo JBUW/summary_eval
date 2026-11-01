@@ -3,13 +3,13 @@ and report() in-process against a real resolved config (validate_config on a
 harness-written workspace, never hand-crafted): exact table lines, the
 zero-rows note, csv rows + note, csv missing-parent (in-process and via the
 CLI), exact --json text, --by dataset shape, multiple-reference pooling,
-latest-wins name lookup, and NULL quality skip."""
+identity match (alias, swapped model file, missing model file), and NULL
+quality skip."""
 import contextlib
 import csv
 import io
 import json
 import os
-import time
 
 import harness  # noqa: F401  (puts the repo root on sys.path)
 
@@ -116,19 +116,24 @@ def _seed_evaluations(context, store, generation_shas):
 def _run(context, scorers, by_dataset=False, json_out=False, csv_path=None):
     console = Console()
     buffer = io.StringIO()
-    with contextlib.redirect_stdout(buffer):
-        code = report(
-            context["resolved"],
-            str(context["workspace"] / "store.db"),
-            context["datasets"],
-            context["scope"],
-            context["summarizers"],
-            scorers,
-            console,
-            by_dataset=by_dataset,
-            json_out=json_out,
-            csv_path=csv_path,
-        )
+    previous = os.getcwd()
+    os.chdir(str(context["workspace"]))
+    try:
+        with contextlib.redirect_stdout(buffer):
+            code = report(
+                context["resolved"],
+                str(context["workspace"] / "store.db"),
+                context["datasets"],
+                context["scope"],
+                context["summarizers"],
+                scorers,
+                console,
+                by_dataset=by_dataset,
+                json_out=json_out,
+                csv_path=csv_path,
+            )
+    finally:
+        os.chdir(previous)
     raw = buffer.getvalue()
     return code, [line for line in raw.splitlines() if line], raw
 
@@ -315,32 +320,59 @@ def test_multiple_reference_pooling(tmp_path):
     ]
 
 
-def test_latest_wins_name_lookup(tmp_path):
-    context = _context(_workspace(tmp_path))
+def _seed_faithfulness(context):
     store = Store(str(context["workspace"] / "store.db"))
     try:
-        old_sha = store.upsert_model(model_id(b"old-bytes"), "m", "model.bin")
-        time.sleep(1.05)
-        new_sha = store.upsert_model(model_id(b"model-bytes"), "m", "model.bin")
-        template_sha = store.upsert_template("sys", "usr", "t")
-        transcript_sha = store.upsert_transcript(
-            "transcript 0", "named", "id-00", 0
-        )
-        store.upsert_generation(
-            transcript_sha, old_sha, {}, template_sha, {}, "old gen"
-        )
-        new_generation = store.upsert_generation(
-            transcript_sha, new_sha, {}, template_sha, {}, "new gen"
-        )
-        store.upsert_metric_evaluation("faithfulness", new_generation, None, 0.75)
+        _, _, generation_shas, _ = _seed(store)
+        store.upsert_metric_evaluation("faithfulness", generation_shas[0], None, 0.25)
+        store.upsert_metric_evaluation("faithfulness", generation_shas[1], None, 0.75)
     finally:
         store.close()
-    scorers = resolve_scorers(
+    return resolve_scorers(
         context["resolved"], Flag(value=["faithfulness"]), Flag(no=True)
     )
+
+
+def test_alias_models_share_rows(tmp_path):
+    workspace = _workspace(tmp_path)
+    path = os.path.join(str(workspace), "config.json")
+    with open(path, "r", encoding="utf-8") as handle:
+        config = json.load(handle)
+    config["models"]["m2"] = {"path": "model.bin"}
+    config["summarizers"]["s2"] = {"model": "m2", "prompt_template": "t"}
+    harness.write_text(path, json.dumps(config, indent=2) + "\n")
+    context = _context(workspace)
+    scorers = _seed_faithfulness(context)
     code, lines, _ = _run(context, scorers)
     assert code == 0
     assert lines == [
         "candidate,scorer,n,mean,min,max",
-        "s,faithfulness,1,0.75,0.75,0.75",
+        "s,faithfulness,2,0.50,0.25,0.75",
+        "s2,faithfulness,2,0.50,0.25,0.75",
     ]
+
+
+def test_swapped_model_file_matches_no_rows(tmp_path):
+    context = _context(_workspace(tmp_path))
+    scorers = _seed_faithfulness(context)
+    with open(context["workspace"] / "model.bin", "wb") as handle:
+        handle.write(b"new-bytes")
+    code, lines, _ = _run(context, scorers)
+    assert code == 0
+    assert lines == [ZERO_ROWS]
+
+
+def test_missing_model_file_cli(tmp_path):
+    workspace = _workspace(tmp_path)
+    (workspace / "out").mkdir()
+    os.remove(workspace / "model.bin")
+    result = harness.run_cli(
+        ["report", "--select", "named", "#0-2", "--csv", "out/rows.csv"],
+        cwd=workspace,
+    )
+    result.assert_exit(1)
+    assert result.lines == [
+        "plan(report): named 3 entries",
+        "error: model 'm': file not found: model.bin",
+    ]
+    assert not os.path.exists(workspace / "out" / "rows.csv")
